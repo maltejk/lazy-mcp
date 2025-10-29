@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/TBXark/optional-go v0.0.1
 	github.com/go-sphere/confstore v0.0.4
-	github.com/mark3labs/mcp-go v0.41.1
+	github.com/mark3labs/mcp-go v0.42.0
 	golang.org/x/sync v0.17.0
 )
 
