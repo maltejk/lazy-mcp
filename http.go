@@ -93,6 +93,10 @@ func startHTTPServer(config *Config) error {
 	}
 
 	for name, clientConfig := range config.McpServers {
+		if !clientConfig.Options.Enabled.OrElse(true) {
+			log.Printf("<%s> Disabled", name)
+			continue
+		}
 		mcpClient, err := newMCPClient(name, clientConfig)
 		if err != nil {
 			return err
