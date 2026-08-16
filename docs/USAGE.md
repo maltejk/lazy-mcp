@@ -42,21 +42,46 @@ Given `mcpProxy.baseURL = https://mcp.example.com` and a server key `fetch`:
 Two unauthenticated endpoints are always served for liveness/readiness probes
 (Docker, reverse proxies, dashboards, monitoring):
 
-- `GET /_healthz` and `GET /_readyz` return `200` with a JSON status document.
-- `HEAD /_healthz` and `HEAD /_readyz` return `200` with an empty body.
+- `/_healthz` (liveness) returns `200` as soon as the process serves requests. It
+  is about this process only, so it stays `200` even when a downstream is down.
+- `/_readyz` (readiness) returns `503` with `"status":"initializing"` until every
+  enabled server has finished connecting and mounting its route, then `200`.
+- `/_readyz` returns `503` again with `"status":"degraded"` if a downstream that
+  had connected later stops answering: each connection is pinged every 30s, and
+  the servers that failed are listed in `unhealthy`. It takes three failed pings
+  in a row, so a busy single-threaded server that skips one ping does not take
+  the proxy out of rotation.
+- `/_readyz` returns `503` with `"status":"unavailable"` if no enabled server is
+  mounted at all. Nothing can be named as broken in that case, but every MCP
+  route would `404`.
+- `GET` returns a JSON status document; `HEAD` returns the same code with an
+  empty body. `serverCount` counts enabled servers only.
 
 ```bash
 curl http://127.0.0.1:9090/_healthz
 # {"name":"MCP Proxy","serverCount":3,"status":"ok","version":"1.0.0"}
+
+curl http://127.0.0.1:9090/_readyz
+# {"name":"MCP Proxy","serverCount":3,"status":"degraded","unhealthy":["notion"],"version":"1.0.0"}
 ```
 
-These endpoints never require the proxy auth token.
+A server that never connected at startup is *not* reported as unhealthy: it has
+no route, and keeping the whole proxy out of rotation would take the working
+servers down with it. Use `-doctor` or the startup logs to find those.
+
+These endpoints never require the proxy auth token, which also means the
+`unhealthy` list exposes your server names to anyone who can reach the port.
+Bind the proxy to an internal address, or keep the health endpoints on an
+internal route in your reverse proxy, if those names are sensitive.
 
 ## Auth
 
-If `options.authTokens` is set for a server, requests must include a bearer token:
+If `options.authTokens` is set for a server, requests must include the token in
+the `Authorization` header. Both forms are accepted, and the scheme name is
+case-insensitive:
 
 ```
+Authorization: Bearer <token>
 Authorization: <token>
 ```
 

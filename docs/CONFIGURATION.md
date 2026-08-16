@@ -1,6 +1,22 @@
 # Configuration
 
-This project supports a v2 JSON configuration. v1 configs are automatically migrated at load time.
+This project uses the v2 JSON configuration below. The v1 schema (top-level
+`server` and `clients` keys) has been removed: rename them to `mcpProxy` and
+`mcpServers`, and lift each client's `config` object into the server entry
+itself, so that
+
+```jsonc
+{"clients": {"fetch": {"type": "stdio", "config": {"command": "uvx", "args": ["mcp-server-fetch"]}}}}
+```
+
+becomes
+
+```jsonc
+{"mcpServers": {"fetch": {"command": "uvx", "args": ["mcp-server-fetch"]}}}
+```
+
+`panicIfInvalid`, `logEnabled` and `authTokens` move into the entry's `options`,
+and the proxy's `globalAuthTokens` become `mcpProxy.options.authTokens`.
 
 - Online converter (build Claude config from your proxy): https://tbxark.github.io/mcp-proxy
 
@@ -70,8 +86,18 @@ This project supports a v2 JSON configuration. v1 configs are automatically migr
 - `name`, `version`: Server identity for MCP handshake.
 - `type`: `sse` (default) or `streamable-http`.
 - `options`: Defaults inherited by `mcpServers.*.options` (can be overridden per server).
+- `startupGracePeriod` (duration string, default `"30s"`): how long `/_readyz` reports
+  `initializing` while clients are still connecting. After it, the proxy reports ready
+  and any straggler mounts when it finishes, so one slow server cannot keep the whole
+  proxy out of rotation.
 
 ## mcpServers
+
+Each entry's key is the server name, which becomes its route
+(`<baseURL path>/<serverName>/`). It must be a clean relative URL path: it
+cannot be empty, contain `.`, `..` or empty segments, start or end with `/`,
+or contain `\`, `{`, `}` or control characters. Multiple segments are allowed
+(see the token-in-the-route trick in `USAGE.md`).
 
 Each entry defines a downstream MCP server. Supported client types:
 
@@ -83,7 +109,10 @@ Common fields:
 
 - `command`, `args`, `env` — for `stdio` clients.
 - `url`, `headers` — for `sse` and `streamable-http` clients.
-- `timeout` — request timeout for `streamable-http`.
+- `timeout` — request timeout for `sse` and `streamable-http`. Write it as a
+  duration string: `"timeout": "30s"`. A bare number means **nanoseconds**
+  (`"timeout": 30` is 30ns, not 30 seconds), so anything under a millisecond is
+  rejected at startup rather than silently failing every request.
 - `oauth` — for `sse` and `streamable-http` clients that require interactive OAuth instead of (or in addition to) `headers` (see below).
 - `options` — per‑server overrides and filters (see below).
 
@@ -134,6 +163,9 @@ looking, from the logs, like a refresh failure with no obvious cause.
 ## options
 
 - `panicIfInvalid` (bool): If true, startup fails when a client cannot initialize.
+- `pingInterval` (duration string, default `"30s"`): how often the connection is probed
+  to keep it alive and to notice it died. This is how quickly `/_readyz` turns
+  `degraded` after a downstream goes away.
 - `logEnabled` (bool): Log requests and events for this client.
 - `authTokens` ([]string): Valid bearer tokens; requests must include `Authorization: <token>`.
 - `toolFilter` (object): Selectively expose tools to the proxy:

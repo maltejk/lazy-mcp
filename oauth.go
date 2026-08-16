@@ -95,8 +95,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 		if bErr != nil {
 			return bErr
 		}
-		options := []transport.ClientOption{client.WithHeaders(mcpHTTPHeaders(v.Headers))}
-		mcpClient, err = client.NewOAuthSSEClient(v.URL, oc, options...)
+		mcpClient, err = client.NewOAuthSSEClient(v.URL, oc, sseClientOptions(v)...)
 	case *StreamableMCPClientConfig:
 		if v.OAuth == nil {
 			return fmt.Errorf("server %q has no oauth config; add mcpServers.%s.oauth to config.json first", serverName, serverName)
@@ -106,11 +105,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 		if bErr != nil {
 			return bErr
 		}
-		options := []transport.StreamableHTTPCOption{transport.WithHTTPHeaders(mcpHTTPHeaders(v.Headers))}
-		if v.Timeout > 0 {
-			options = append(options, transport.WithHTTPTimeout(v.Timeout))
-		}
-		mcpClient, err = client.NewOAuthStreamableHttpClient(v.URL, oc, options...)
+		mcpClient, err = client.NewOAuthStreamableHttpClient(v.URL, oc, streamableClientOptions(v)...)
 	default:
 		return errors.New("invalid client type")
 	}

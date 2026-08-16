@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -154,4 +157,28 @@ func TestMCPServerListResourcesReturnsEmptyArrayNotNull(t *testing.T) {
 		}
 		assertEmptyJSONArray(t, raw, "resourceTemplates", "[]")
 	})
+}
+
+// A downstream that answers "method not found" is alive and simply does not
+// implement ping; only a broken connection may mark a client unhealthy.
+func TestIsTransportFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "transport closed", err: transport.NewError(errors.New("transport closed")), want: true},
+		{name: "wrapped transport error", err: fmt.Errorf("ping: %w", transport.NewError(errors.New("eof"))), want: true},
+		{name: "ping unsupported", err: mcp.ErrMethodNotFound, want: false},
+		{name: "plain error", err: errors.New("boom"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTransportFailure(tt.err); got != tt.want {
+				t.Errorf("isTransportFailure(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
 }

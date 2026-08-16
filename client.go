@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -15,12 +17,32 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// clientHealth is the last known state of a downstream connection.
+//
+// A client that never connected stays healthUnknown and is left out of the
+// readiness report: a server that is misconfigured or down at startup must not
+// keep the whole proxy out of rotation, since the other servers still work. One
+// that connected and later broke does report unhealthy, because that is a
+// regression a load balancer should route around.
+type clientHealth int32
+
+const (
+	healthUnknown clientHealth = iota
+	healthOK
+	healthFailed
+)
+
 type Client struct {
 	name            string
 	needPing        bool
 	needManualStart bool
 	client          *client.Client
 	options         *OptionsV2
+	health          atomic.Int32
+}
+
+func (c *Client) Health() clientHealth {
+	return clientHealth(c.health.Load())
 }
 
 const acceptEncodingHeader = "Accept-Encoding"
@@ -40,6 +62,24 @@ func mcpHTTPHeaders(headers map[string]string) map[string]string {
 	return result
 }
 
+// sseClientOptions and streamableClientOptions keep the plain and OAuth
+// variants of each transport configured identically.
+func sseClientOptions(conf *SSEMCPClientConfig) []transport.ClientOption {
+	options := []transport.ClientOption{client.WithHeaders(mcpHTTPHeaders(conf.Headers))}
+	if conf.Timeout > 0 {
+		options = append(options, transport.WithResponseTimeout(time.Duration(conf.Timeout)))
+	}
+	return options
+}
+
+func streamableClientOptions(conf *StreamableMCPClientConfig) []transport.StreamableHTTPCOption {
+	options := []transport.StreamableHTTPCOption{transport.WithHTTPHeaders(mcpHTTPHeaders(conf.Headers))}
+	if conf.Timeout > 0 {
+		options = append(options, transport.WithHTTPTimeout(time.Duration(conf.Timeout)))
+	}
+	return options
+}
+
 func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 	clientInfo, pErr := parseMCPClientConfigV2(conf)
 	if pErr != nil {
@@ -56,10 +96,13 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 			return nil, err
 		}
 
+		// Stdio servers are pinged too: a crashed subprocess is the most
+		// common way a downstream disappears at runtime.
 		return &Client{
-			name:    name,
-			client:  mcpClient,
-			options: conf.Options,
+			name:     name,
+			needPing: true,
+			client:   mcpClient,
+			options:  conf.Options,
 		}, nil
 	case *SSEMCPClientConfig:
 		if v.OAuth != nil {
@@ -67,7 +110,7 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 			if oErr != nil {
 				return nil, oErr
 			}
-			options := []transport.ClientOption{client.WithHeaders(mcpHTTPHeaders(v.Headers))}
+			options := sseClientOptions(v)
 			mcpClient, err := client.NewOAuthSSEClient(v.URL, oc, options...)
 			if err != nil {
 				return nil, err
@@ -80,7 +123,7 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 				options:         conf.Options,
 			}, nil
 		}
-		options := []transport.ClientOption{client.WithHeaders(mcpHTTPHeaders(v.Headers))}
+		options := sseClientOptions(v)
 		mcpClient, err := client.NewSSEMCPClient(v.URL, options...)
 		if err != nil {
 			return nil, err
@@ -98,10 +141,7 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 			if oErr != nil {
 				return nil, oErr
 			}
-			options := []transport.StreamableHTTPCOption{transport.WithHTTPHeaders(mcpHTTPHeaders(v.Headers))}
-			if v.Timeout > 0 {
-				options = append(options, transport.WithHTTPTimeout(v.Timeout))
-			}
+			options := streamableClientOptions(v)
 			mcpClient, err := client.NewOAuthStreamableHttpClient(v.URL, oc, options...)
 			if err != nil {
 				return nil, err
@@ -114,10 +154,7 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 				options:         conf.Options,
 			}, nil
 		}
-		options := []transport.StreamableHTTPCOption{transport.WithHTTPHeaders(mcpHTTPHeaders(v.Headers))}
-		if v.Timeout > 0 {
-			options = append(options, transport.WithHTTPTimeout(v.Timeout))
-		}
+		options := streamableClientOptions(v)
 		mcpClient, err := client.NewStreamableHttpClient(v.URL, options...)
 		if err != nil {
 			return nil, err
@@ -162,15 +199,34 @@ func (c *Client) addToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	_ = c.addResourcesToServer(ctx, mcpServer)
 	_ = c.addResourceTemplatesToServer(ctx, mcpServer)
 
+	c.health.Store(int32(healthOK))
 	if c.needPing {
 		go c.startPingTask(ctx)
 	}
 	return nil
 }
 
+// pingTimeout bounds a single probe, so a downstream that accepts the request
+// and then stalls cannot block the health loop until shutdown.
+const pingTimeout = 10 * time.Second
+
+// pingFailureThreshold is how many probes in a row have to fail before the
+// connection counts as broken. One is not enough: a single-threaded downstream
+// (the common shape for Python and Node stdio servers) busy with a long tool
+// call answers no pings at all, and taking the whole proxy out of rotation for
+// that would pull a pod mid-request.
+const pingFailureThreshold = 3
+
+// isTransportFailure reports whether err means the connection itself is
+// broken. A downstream that answers with a JSON-RPC error is still alive - it
+// may simply not implement ping - so only transport errors count as unhealthy.
+func isTransportFailure(err error) bool {
+	var transportErr *transport.Error
+	return errors.As(err, &transportErr)
+}
+
 func (c *Client) startPingTask(ctx context.Context) {
-	interval := 30 * time.Second
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(c.options.pingInterval())
 	defer ticker.Stop()
 
 	failCount := 0
@@ -180,16 +236,28 @@ func (c *Client) startPingTask(ctx context.Context) {
 			slog.Debug("Context done, stopping ping", "client", c.name)
 			return
 		case <-ticker.C:
-			if err := c.client.Ping(ctx); err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return
-				}
+			pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := c.client.Ping(pingCtx)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil && isTransportFailure(err) {
 				failCount++
 				slog.Warn("MCP ping failed", "client", c.name, "err", err, "failures", failCount)
-			} else if failCount > 0 {
+				if failCount >= pingFailureThreshold {
+					c.health.Store(int32(healthFailed))
+				}
+				continue
+			}
+			if err != nil {
+				slog.Debug("MCP ping answered with an error, treating as alive", "client", c.name, "err", err)
+			}
+			if failCount > 0 {
 				slog.Info("MCP ping recovered", "client", c.name, "failures", failCount)
 				failCount = 0
 			}
+			c.health.Store(int32(healthOK))
 		}
 	}
 }
@@ -344,14 +412,23 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 }
 
 func (c *Client) Close() error {
-	if c.client != nil {
-		return c.client.Close()
+	if c.client == nil {
+		return nil
 	}
-	return nil
+	err := c.client.Close()
+	// A stdio subprocess that already died, or that exits non-zero when its
+	// stdin is closed (many MCP servers do), is not a failure to close it.
+	// Reporting it as one would make the proxy exit non-zero after an
+	// otherwise clean shutdown.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		slog.Warn("Downstream server exited with an error", "client", c.name, "err", err)
+		return nil
+	}
+	return err
 }
 
 type Server struct {
-	tokens    []string
 	mcpServer *server.MCPServer
 	handler   http.Handler
 }
@@ -398,14 +475,8 @@ func newMCPServer(name string, serverConfig *MCPProxyConfigV2, clientConfig *MCP
 	default:
 		return nil, fmt.Errorf("unknown server type: %s", serverConfig.Type)
 	}
-	srv := &Server{
+	return &Server{
 		mcpServer: mcpServer,
 		handler:   handler,
-	}
-
-	if len(clientOptions.AuthTokens) > 0 {
-		srv.tokens = clientOptions.AuthTokens
-	}
-
-	return srv, nil
+	}, nil
 }

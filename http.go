@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -21,31 +25,51 @@ import (
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// chainMiddleware wraps h so that middlewares run in the order given: the
+// first one is outermost and sees every request, including those the ones
+// after it reject or panic on.
 func chainMiddleware(h http.Handler, middlewares ...MiddlewareFunc) http.Handler {
-	for _, mw := range middlewares {
-		h = mw(h)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
 	}
 	return h
 }
 
-func newAuthMiddleware(tokens []string) MiddlewareFunc {
-	tokenSet := make(map[string]struct{}, len(tokens))
-	for _, token := range tokens {
-		tokenSet[token] = struct{}{}
+const bearerPrefix = "Bearer "
+
+// bearerToken extracts the credentials from an Authorization header. RFC 7235
+// makes the scheme name case-insensitive, so "bearer" is as valid as "Bearer".
+// A bare token with no scheme is also accepted, which earlier versions allowed.
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) >= len(bearerPrefix) && strings.EqualFold(header[:len(bearerPrefix)], bearerPrefix) {
+		header = header[len(bearerPrefix):]
 	}
+	return strings.TrimSpace(header)
+}
+
+// tokenAllowed compares against every configured token in constant time, so
+// response timing cannot be used to recover a valid one.
+func tokenAllowed(tokens []string, candidate string) bool {
+	if candidate == "" {
+		return false
+	}
+	allowed := false
+	for _, token := range tokens {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
+			allowed = true
+		}
+	}
+	return allowed
+}
+
+// newAuthMiddleware is only attached when at least one token is configured.
+func newAuthMiddleware(tokens []string) MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if len(tokens) != 0 {
-				token := r.Header.Get("Authorization")
-				token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
-				if token == "" {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					return
-				}
-				if _, ok := tokenSet[token]; !ok {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					return
-				}
+			if !tokenAllowed(tokens, bearerToken(r.Header.Get("Authorization"))) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -77,33 +101,85 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 
 // healthHandler returns an unauthenticated handler for liveness/readiness
 // probes. It responds to GET with a small JSON status document and to HEAD with
-// an empty 200 body, so it can be used by Docker, reverse proxies, and
-// monitoring without speaking MCP or providing the proxy auth token.
-func healthHandler(config *Config) http.HandlerFunc {
+// an empty body, so it can be used by Docker, reverse proxies, and monitoring
+// without speaking MCP or providing the proxy auth token.
+//
+// A nil readiness func makes the handler report OK as soon as the process
+// serves requests (liveness). The readiness endpoint passes one that reports
+// 503 while clients are still mounting their routes, and again whenever a
+// downstream connection that used to work has broken, so a load balancer can
+// route around a proxy whose backends are gone.
+func healthHandler(config *Config, readiness func() readinessReport) http.HandlerFunc {
 	type healthResponse struct {
-		Name        string `json:"name"`
-		ServerCount int    `json:"serverCount"`
-		Status      string `json:"status"`
-		Version     string `json:"version"`
+		Name        string   `json:"name"`
+		ServerCount int      `json:"serverCount"`
+		Status      string   `json:"status"`
+		Unhealthy   []string `json:"unhealthy,omitempty"`
+		Version     string   `json:"version"`
+	}
+	enabled := 0
+	for _, clientConfig := range config.McpServers {
+		if clientConfig.Options == nil || !clientConfig.Options.Disabled {
+			enabled++
+		}
 	}
 	body := healthResponse{
 		Name:        config.McpProxy.Name,
-		ServerCount: len(config.McpServers),
+		ServerCount: enabled,
 		Status:      "ok",
 		Version:     config.McpProxy.Version,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		code, resp := http.StatusOK, body
+		if readiness != nil {
+			report := readiness()
+			switch {
+			case !report.started:
+				code, resp.Status = http.StatusServiceUnavailable, "initializing"
+			case len(report.unhealthy) > 0:
+				code, resp.Status, resp.Unhealthy = http.StatusServiceUnavailable, "degraded", report.unhealthy
+			case report.mounted == 0 && enabled > 0:
+				// Nothing to name as broken, but every MCP route 404s, so this
+				// proxy must not stay in a load balancer's rotation.
+				code, resp.Status = http.StatusServiceUnavailable, "unavailable"
+			}
+		}
 		switch r.Method {
 		case http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(body)
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(resp)
 		case http.MethodHead:
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(code)
 		default:
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+// readinessReport is what /_readyz asks the running proxy about its clients.
+type readinessReport struct {
+	// started is false until every client has finished connecting, or the
+	// startup grace period has expired.
+	started bool
+	// mounted counts the clients that connected at least once, and so have a
+	// route. Zero means the proxy has nothing to serve at all.
+	mounted int
+	// unhealthy names the clients that connected and later failed their
+	// keepalive ping.
+	unhealthy []string
+}
+
+// clientStartupError applies the per-server failure policy: a downstream
+// server that cannot be started is logged and left unmounted so the rest of
+// the proxy still serves, unless that server set panicIfInvalid, which makes
+// it fatal for the whole process.
+func clientStartupError(name string, clientConfig *MCPClientConfigV2, err error) error {
+	slog.Error("Failed to start client", "client", name, "err", err)
+	if clientConfig.Options.PanicIfInvalid.OrElse(false) {
+		return err
+	}
+	return nil
 }
 
 func startHTTPServer(config *Config) error {
@@ -124,39 +200,82 @@ func startHTTPServer(config *Config) error {
 	info := mcp.Implementation{
 		Name: config.McpProxy.Name,
 	}
+	// clients is filled in from the per-server goroutines below.
+	var clientsMu sync.Mutex
 	clients := make(map[string]*Client, len(config.McpServers))
 
+	// shuttingDown tells the startup goroutines below that shutdown has already
+	// walked the clients map, so a client that finishes connecting after that
+	// has to close itself instead of being left running.
+	var shuttingDown atomic.Bool
+
 	// Unauthenticated health endpoints for liveness/readiness probes.
-	health := healthHandler(config)
-	httpMux.HandleFunc("/_healthz", health)
-	httpMux.HandleFunc("/_readyz", health)
+	var started atomic.Bool
+	readiness := func() readinessReport {
+		if !started.Load() {
+			return readinessReport{}
+		}
+		report := readinessReport{started: true}
+		clientsMu.Lock()
+		defer clientsMu.Unlock()
+		for name, client := range clients {
+			health := client.Health()
+			if health == healthUnknown {
+				// Created but never connected: it has no route, so there is
+				// nothing to route around.
+				continue
+			}
+			report.mounted++
+			if health == healthFailed {
+				report.unhealthy = append(report.unhealthy, name)
+			}
+		}
+		slices.Sort(report.unhealthy)
+		return report
+	}
+	httpMux.HandleFunc("/_healthz", healthHandler(config, nil))
+	httpMux.HandleFunc("/_readyz", healthHandler(config, readiness))
 
 	for name, clientConfig := range config.McpServers {
 		if clientConfig.Options.Disabled {
 			slog.Info("Disabled", "client", name)
 			continue
 		}
-		mcpClient, err := newMCPClient(name, clientConfig)
-		if err != nil {
-			return err
-		}
-		server, err := newMCPServer(name, config.McpProxy, clientConfig)
-		if err != nil {
-			return err
-		}
-		clients[name] = mcpClient
 		errorGroup.Go(func() error {
 			slog.Info("Connecting", "client", name)
-			addErr := mcpClient.addToMCPServer(ctx, info, server.mcpServer)
-			if addErr != nil {
-				slog.Error("Failed to add client to server", "client", name, "err", addErr)
-				if clientConfig.Options.PanicIfInvalid.OrElse(false) {
-					return addErr
+			// Creating a stdio client already spawns the subprocess, so a
+			// missing command fails here rather than while connecting. Both
+			// have to obey the same panicIfInvalid policy.
+			mcpClient, err := newMCPClient(name, clientConfig)
+			if err != nil {
+				return clientStartupError(name, clientConfig, err)
+			}
+			clientsMu.Lock()
+			if shuttingDown.Load() {
+				clientsMu.Unlock()
+				// shutdown already closed everything it knew about, and this
+				// client is not in that map. Nobody else will close it - and
+				// for stdio it owns a subprocess.
+				slog.Info("Shutting down", "client", name)
+				if cErr := mcpClient.Close(); cErr != nil {
+					slog.Error("Failed to close client", "client", name, "err", cErr)
 				}
 				return nil
 			}
+			clients[name] = mcpClient
+			clientsMu.Unlock()
+
+			server, err := newMCPServer(name, config.McpProxy, clientConfig)
+			if err != nil {
+				return clientStartupError(name, clientConfig, err)
+			}
+			if err := mcpClient.addToMCPServer(ctx, info, server.mcpServer); err != nil {
+				return clientStartupError(name, clientConfig, err)
+			}
 			slog.Info("Connected", "client", name)
 
+			// Outermost first: recover also guards the middlewares below it,
+			// and the logger records requests that auth rejects.
 			middlewares := make([]MiddlewareFunc, 0)
 			middlewares = append(middlewares, recoverMiddleware(name))
 			if clientConfig.Options.LogEnabled.OrElse(false) {
@@ -198,13 +317,22 @@ func startHTTPServer(config *Config) error {
 	defer signal.Stop(sigChan)
 
 	shutdown := func() error {
+		shuttingDown.Store(true)
 		cancel()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		var shutdownErrors []error
 		if err := httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			shutdownErrors = append(shutdownErrors, err)
+			// An SSE stream never goes idle, so a client that is still
+			// connected will always outlast the grace period. Force those
+			// connections closed rather than reporting a failed shutdown.
+			slog.Warn("Graceful shutdown timed out, closing open connections", "err", err)
+			if err := httpServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				shutdownErrors = append(shutdownErrors, err)
+			}
 		}
+		clientsMu.Lock()
+		defer clientsMu.Unlock()
 		for name, client := range clients {
 			slog.Info("Shutting down", "client", name)
 			if err := client.Close(); err != nil {
@@ -214,6 +342,13 @@ func startHTTPServer(config *Config) error {
 		return errors.Join(shutdownErrors...)
 	}
 
+	// A downstream can be slow for legitimate reasons (npx fetching a package on
+	// first run) and the servers that did connect are already serving, so
+	// readiness waits only this long for the stragglers.
+	grace := config.McpProxy.startupGrace()
+	graceTimer := time.NewTimer(grace)
+	defer graceTimer.Stop()
+
 	for {
 		select {
 		case err := <-initializationDone:
@@ -222,7 +357,13 @@ func startHTTPServer(config *Config) error {
 				_ = shutdown()
 				return fmt.Errorf("failed to initialize clients: %w", err)
 			}
+			started.Store(true)
 			slog.Info("All clients initialized")
+		case <-graceTimer.C:
+			// Never let one slow downstream keep the proxy out of rotation.
+			if started.CompareAndSwap(false, true) {
+				slog.Warn("Reporting ready while clients are still connecting", "grace", grace)
+			}
 		case err := <-serverDone:
 			_ = shutdown()
 			if err != nil {
