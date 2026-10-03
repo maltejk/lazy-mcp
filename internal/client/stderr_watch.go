@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,10 +27,14 @@ type stderrWatcher struct {
 	exited chan struct{}
 }
 
-// watchStderr starts draining r. Every line is also logged at debug level
-// under serverName, since a downstream's stderr is usually where it explains
-// why it is unhappy.
-func watchStderr(serverName string, r io.Reader) *stderrWatcher {
+// watchStderr starts draining r. Every line is also logged under serverName,
+// since a downstream's stderr is usually where it explains why it is unhappy:
+// at info level when verbose is set (options.debugLogging), else at debug.
+func watchStderr(serverName string, r io.Reader, verbose bool) *stderrWatcher {
+	level := slog.LevelDebug
+	if verbose {
+		level = slog.LevelInfo
+	}
 	w := &stderrWatcher{exited: make(chan struct{})}
 	go func() {
 		defer close(w.exited)
@@ -37,7 +42,7 @@ func watchStderr(serverName string, r io.Reader) *stderrWatcher {
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
-			slog.Debug("Downstream stderr", "client", serverName, "line", line)
+			slog.Log(context.Background(), level, "Downstream stderr", "client", serverName, "line", line)
 			w.mu.Lock()
 			w.tail = append(w.tail, line)
 			if len(w.tail) > stderrTailLines {
@@ -93,10 +98,10 @@ func (w *stderrWatcher) explain(serverName string, err error) error {
 //
 // The lines are logged rather than discarded, and the last few are kept so a
 // downstream that dies during startup can be reported with its own diagnostics.
-func drainStderr(name string, mcpClient *client.Client) *stderrWatcher {
+func drainStderr(name string, mcpClient *client.Client, verbose bool) *stderrWatcher {
 	stderr, ok := client.GetStderr(mcpClient)
 	if !ok || stderr == nil {
 		return nil
 	}
-	return watchStderr(name, stderr)
+	return watchStderr(name, stderr, verbose)
 }

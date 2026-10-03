@@ -183,7 +183,7 @@ func (c *Client) buildRawClient() (*client.Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		watcher := drainStderr(c.name, raw)
+		watcher := drainStderr(c.name, raw, c.options != nil && c.options.DebugLogging.OrElse(false))
 		c.mu.Lock()
 		c.stderr = watcher
 		c.mu.Unlock()

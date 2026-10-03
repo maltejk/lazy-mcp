@@ -13,7 +13,7 @@ func TestStderrWatcherReportsExitWithTail(t *testing.T) {
 	for i := 0; i < stderrTailLines+5; i++ {
 		fmt.Fprintf(&sb, "line %d\n", i)
 	}
-	w := watchStderr("srv", strings.NewReader(sb.String()))
+	w := watchStderr("srv", strings.NewReader(sb.String()), false)
 
 	select {
 	case <-w.exited:
