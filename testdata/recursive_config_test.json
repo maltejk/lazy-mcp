@@ -1,0 +1,13 @@
+{
+  "mcpProxy": {
+    "baseURL": "http://localhost",
+    "addr": ":9999",
+    "name": "MCP Proxy",
+    "version": "1.0.0",
+    "type": "streamable-http",
+    "options": {
+      "logEnabled": true
+    }
+  },
+  "mcpServers": {}
+}
