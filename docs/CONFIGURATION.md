@@ -81,12 +81,45 @@ and the proxy's `globalAuthTokens` become `mcpProxy.options.authTokens`.
 }
 ```
 
+## Environment Variables
+
+The config file supports environment variable expansion (enabled by default with `-expand-env`). Use `${VAR_NAME}` syntax:
+
+```json
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uv",
+      "args": ["--directory", "${SERENA_PATH}", "run", "serena", "start-mcp-server"],
+      "env": {}
+    }
+  }
+}
+```
+
+Then set the environment variable:
+```bash
+export SERENA_PATH="/path/to/your/serena"
+./build/mcp-proxy --config config.json
+```
+
+Prefer `${VAR_NAME}` over a hardcoded placeholder value for anything environment-specific (hosts, tokens,
+paths), even in example configs. A literal placeholder like `https://gitlab.example.com` will silently
+resolve as a real (but wrong) URL if a deployment forgets to override it — the downstream server then
+fails every call with an opaque network error (e.g. `fetch failed`) instead of a clear "unset env var"
+signal. `examples/synergy/*.config.json` sets `GITLAB_API_URL` and `GITLAB_TOKEN_<ROLE>` this way; both
+must be exported per-deployment before starting a role's proxy.
+
 ## mcpProxy
 
 - `baseURL`: Public URL base used to build client endpoints.
 - `addr`: Bind address (e.g. `:9090`).
 - `name`, `version`: Server identity for MCP handshake.
-- `type`: `sse` (default) or `streamable-http`.
+- `type`: `sse` (default), `streamable-http`, or `stdio` (hierarchy mode only: serve the
+  meta-tools over stdin/stdout; `baseURL` and `addr` are not required).
+- `hierarchyPath`: directory of hierarchy JSON files (see [Hierarchy Configuration](#hierarchy-configuration)).
+  When set, the proxy serves the `get_tools_in_category`/`execute_tool` meta-tools instead of
+  mounting every downstream tool. Can also be given with `-hierarchy`.
 - `options`: Defaults inherited by `mcpServers.*.options` (can be overridden per server).
 - `startupGracePeriod` (duration string, default `"30s"`): how long `/_readyz` reports
   `initializing` while clients are still connecting. After it, the proxy reports ready
@@ -182,6 +215,20 @@ fallback, so an existing registration keeps working.)
   to keep it alive and to notice it died. This is how quickly `/_readyz` turns
   `degraded` after a downstream goes away.
 - `logEnabled` (bool): Log requests and events for this client.
+- `logFilePath` (string, `mcpProxy.options` only): also write the proxy's logs to this file,
+  in addition to stderr. Useful in `stdio` mode, where stdout carries the MCP protocol. In
+  hierarchy mode every `execute_tool` call is logged with `hierarchy_path`, `server`, `tool`,
+  `status`, `duration` and `arguments`, regardless of `logEnabled`; failures to resolve a tool
+  path, find its server, or start the downstream client are logged too.
+- `debugLogging` (bool, default `false`): extra diagnostics for tracking down a downstream
+  timeout or hang: `queue_wait` (time waiting for the per-server mutex) vs. `call_duration`
+  (actual RPC time) on the tool-call log line, per-phase timing when a server is loaded, and
+  the downstream stdio subprocess's own stderr (`Downstream stderr` lines, otherwise logged
+  at debug level only).
+- `lazyLoad` (bool, default `false`): in proxy mode, expose a downstream through a single
+  `activate_<server>` tool instead of mounting its whole catalog. Calling it mounts the real
+  tools, prompts and resources. Not used in hierarchy mode, which is lazy by design.
+- `recursiveLazyLoad` (bool): reserved for hierarchy mode.
 - `authTokens` ([]string): Valid bearer tokens; requests must include `Authorization: <token>`.
 - `toolFilter` (object): Selectively expose tools to the proxy:
   - `mode`: `allow` or `block`.
@@ -216,3 +263,128 @@ Notes:
   them, so a fleet-wide setting can be declared once. `disabled` is per-server only and is
   not inherited.
 - To discover tool names for filtering, start without a filter and check logs for lines like `<server> Adding tool <name>`.
+
+## Auto-restart on crash/hang
+
+If a downstream stdio MCP server errors at the transport level (a crashed
+process, a broken pipe, or a tool call that hits the 30s timeout because
+the server is wedged), lazy-mcp kills the process (force-killing it if it
+doesn't shut down gracefully) and evicts it from its cache. The failed
+call itself still returns an error — it is not retried automatically —
+but the *next* `execute_tool` call against that server spawns a fresh
+process. To avoid hot-looping a permanently broken server config (e.g. a
+wrong command), a 10-second cooldown applies after an eviction before
+another spawn attempt is made. A downstream that crashes *during* startup fails the call
+immediately, with the last lines of its stderr in the error, instead of waiting out the startup
+timeout. (`autoReconnect`, above, additionally rebuilds a connection that drops while it is
+being health-probed.)
+
+## Hierarchy Configuration
+
+The router loads tool hierarchy from `testdata/mcp_hierarchy/` (default path). Each directory contains a JSON file defining:
+
+**Root** (`root.json`):
+```json
+{
+  "overview": "Description of what this level provides",
+  "categories": {
+    "coding_tools": "Development tools...",
+    "web_tools": "Web scraping..."
+  },
+  "tools": {
+    "get_tools_in_category": {
+      "description": "Navigate the hierarchy",
+      "inputSchema": {...}
+    },
+    "execute_tool": {
+      "description": "Execute a tool by path",
+      "inputSchema": {...}
+    }
+  }
+}
+```
+
+**Category with MCP Server** (`coding_tools/serena/serena.json`):
+```json
+{
+  "overview": "Serena semantic code analysis",
+  "mcp_server": {
+    "name": "serena",
+    "type": "stdio",
+    "command": "uv",
+    "args": ["--directory", "/path/to/serena", "run", "serena", "start-mcp-server"],
+    "env": {}
+  },
+  "categories": {
+    "search": "Find symbols and references",
+    "edit": "Modify code intelligently"
+  },
+  "tools": {
+    "get_symbols_overview": {
+      "description": "Get overview of file symbols",
+      "maps_to": "get_symbols_overview"
+    }
+  }
+}
+```
+
+### MCP Server Configuration
+
+The `mcp_server` block supports:
+- **stdio**: `command`, `args`, `env`
+- **sse**: `url`, `headers`
+- **streamable-http**: `url`, `headers`, `timeout`
+
+Server configs are inherited by child categories (no need to repeat).
+
+### Tool Mapping
+
+- `maps_to`: Maps hierarchy tool name to actual MCP tool name
+- If omitted, hierarchy name is used as-is
+- Enables renaming tools for better organization
+
+### Activation (opt-in downstream tool categories)
+
+Some downstream MCP servers hide most of their tools behind their own runtime "discover"/"activate"
+tool and only reveal the rest of their categories after it's called in the same session (for example, a
+GitLab MCP server's own `discover_tools`). Since the hierarchy above is a static snapshot generated once
+ahead of time, tools revealed that way would otherwise be permanently unreachable through
+`get_tools_in_category`/`execute_tool`, even though the downstream server's own live session now has them
+active. An `activation` block on a server-level node fixes this:
+
+```json
+{
+  "overview": "gitlab: 117 tools; ...",
+  "activation": {
+    "server": "gitlab_po",
+    "tool": "discover_tools",
+    "param": "category",
+    "categories": ["pipelines", "milestones", "wiki", "releases", "..."]
+  }
+}
+```
+
+The first time a lookup misses under this node (a `get_tools_in_category`/`execute_tool` call for a tool
+the static snapshot never saw), the proxy calls `tool` once per entry in `categories` on `server` over its
+existing persistent connection, re-lists that server's tools, and merges any newly-visible ones into the
+hierarchy as flat leaves under `<server>.<toolName>` before retrying. This runs at most once per server per
+proxy lifetime.
+
+## Structure Example
+
+```
+testdata/mcp_hierarchy/
+├── root.json
+├── coding_tools/
+│   ├── coding_tools.json
+│   └── serena/
+│       ├── serena.json          (MCP server config here)
+│       ├── search/
+│       │   └── search.json
+│       └── edit/
+│           └── edit.json
+└── web_tools/
+    └── web_tools.json
+```
+
+See example hierarchy in the repository.

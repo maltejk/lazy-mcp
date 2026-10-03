@@ -12,6 +12,9 @@
                         named mcpServers entry, then exit
 -check-config          load and validate the config, then exit
 -log-level value       log level: debug, info, warn, or error (default info)
+-hierarchy string      directory of hierarchy JSON files; serves the get_tools_in_category/execute_tool
+                        meta-tools instead of per-server routes (overrides mcpProxy.hierarchyPath)
+-port string           port to listen on, e.g. 8080 or :8080 (overrides mcpProxy.addr)
 -version               print version and exit
 -help                  print help and exit
 ```
@@ -29,6 +32,81 @@ mcp-proxy -config config.json -check-config
 Validation includes transport requirements, absolute HTTP URLs, OAuth callback
 safety, authentication tokens, and tool-filter modes. Invalid configuration
 exits non-zero with the affected field or server name.
+
+## Hierarchy mode (meta-tools)
+
+By default the proxy mounts every downstream tool on a per-server route (see
+[Endpoints](#endpoints)). Set `mcpProxy.hierarchyPath` (or pass `-hierarchy`), or
+use `mcpProxy.type: "stdio"`, to switch to hierarchy mode instead: the proxy then
+exposes only two meta-tools and starts downstream servers on first use, keeping
+their tool schemas out of the agent's context until they are needed. In this mode
+the server answers on `/` (HTTP) or stdin/stdout (`stdio`); the per-server routes
+and the `/_healthz`/`/_readyz` endpoints below belong to proxy mode only.
+
+The router exposes 2 tools for navigating and executing tools across all MCP servers:
+
+### `get_tools_in_category(path)`
+
+Navigate the tool hierarchy and discover available tools.
+
+**Arguments:**
+- `path` (string): Category path using dot notation (e.g., `"coding_tools.serena"`) or `""` for root
+
+**Returns:**
+- `overview`: Description of the category
+- `categories`: Available subcategories with descriptions
+- `tools`: Available tools at this level with full paths
+
+**Example:**
+```json
+get_tools_in_category("coding_tools.serena")
+→ {
+    "overview": "Serena semantic code analysis",
+    "categories": {
+      "search": "Find symbols and references",
+      "edit": "Modify code intelligently"
+    },
+    "tools": {
+      "get_symbols_overview": {
+        "description": "Get overview of file symbols",
+        "tool_path": "coding_tools.serena.get_symbols_overview"
+      }
+    }
+  }
+```
+
+### `execute_tool(tool_path, arguments)`
+
+Execute a tool by its full hierarchical path.
+
+**Arguments:**
+- `tool_path` (string): Full tool path (e.g., `"coding_tools.serena.find_symbol"`)
+- `arguments` (object): Arguments to pass to the tool
+
+**Behavior:**
+- Lazy-loads the MCP server if not already running
+- Proxies request to the actual MCP server
+- Returns the tool's result
+
+**Example:**
+```json
+execute_tool(
+  "coding_tools.serena.find_symbol",
+  {
+    "name_path": "Client",
+    "relative_path": "client.go",
+    "depth": 1
+  }
+)
+→ <result from Serena's find_symbol tool>
+```
+
+### Workflow
+
+1. **List available tools**: `tools/list` → returns 2 meta-tools
+2. **Explore root**: `get_tools_in_category("")` → see top-level categories
+3. **Navigate deeper**: `get_tools_in_category("coding_tools")` → see dev tools
+4. **Execute tool**: `execute_tool("coding_tools.serena.find_symbol", {...})` → runs the tool
 
 ## Endpoints
 
