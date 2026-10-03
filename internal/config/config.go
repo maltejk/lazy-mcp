@@ -142,7 +142,7 @@ func (o *OptionsV2) EffectiveReconnectInterval() time.Duration {
 }
 
 // autoReconnect reports whether this server self-heals. It is nil-safe so a
-// Client built without Options (which newMCPClient permits) does not panic in
+// Client built without Options (which NewMCPClient permits) does not panic in
 // the ping task.
 func (o *OptionsV2) EffectiveAutoReconnect() bool {
 	return o != nil && o.AutoReconnect.OrElse(false)
@@ -171,6 +171,7 @@ const (
 type MCPServerType string
 
 const (
+	MCPServerTypeStdio      MCPServerType = "stdio"
 	MCPServerTypeSSE        MCPServerType = "sse"
 	MCPServerTypeStreamable MCPServerType = "streamable-http"
 )
@@ -195,6 +196,19 @@ type OptionsV2 struct {
 	AuthTokens     []string             `json:"authTokens,omitempty"`
 	ToolFilter     *ToolFilterConfig    `json:"toolFilter,omitempty"`
 	Disabled       bool                 `json:"disabled,omitempty"`
+	// LogFilePath redirects the proxy's own log output to a file. Needed for
+	// stdio mode, where stdout carries the MCP protocol.
+	LogFilePath string `json:"logFilePath,omitempty"`
+	// DebugLogging turns on per-phase timing logs for server loading and
+	// mirrors downstream stderr into the proxy log.
+	DebugLogging optional.Field[bool] `json:"debugLogging"`
+	// LazyLoad exposes a downstream through a single activate_<server>
+	// meta-tool instead of mounting its whole catalog up front. Calling the
+	// meta-tool mounts the real tools, prompts and resources.
+	LazyLoad optional.Field[bool] `json:"lazyLoad"`
+	// RecursiveLazyLoad is read by the hierarchy router: category listings
+	// only reveal one level of the tool tree at a time.
+	RecursiveLazyLoad optional.Field[bool] `json:"recursiveLazyLoad"`
 	// PingInterval is how often this connection is probed to keep it alive and
 	// to notice that it died; it sets how quickly /_readyz reports degraded.
 	PingInterval Duration `json:"pingInterval,omitempty"`
@@ -216,7 +230,11 @@ type MCPProxyConfigV2 struct {
 	Name    string        `json:"name"`
 	Version string        `json:"version"`
 	Type    MCPServerType `json:"type,omitempty"`
-	Options *OptionsV2    `json:"options,omitempty"`
+	// HierarchyPath is the directory of hierarchy JSON files. When set, the
+	// proxy exposes the get_tools_in_category/execute_tool meta-tools instead
+	// of mounting every downstream tool.
+	HierarchyPath string     `json:"hierarchyPath,omitempty"`
+	Options       *OptionsV2 `json:"options,omitempty"`
 	// StartupGracePeriod bounds how long /_readyz reports "initializing" while
 	// clients are still connecting. See startupGrace.
 	StartupGracePeriod Duration `json:"startupGracePeriod,omitempty"`
@@ -417,11 +435,15 @@ func ValidateConfig(config *Config) error {
 		return errors.New("mcpProxy is required")
 	}
 	proxy := config.McpProxy
-	if err := ValidateHTTPURL("mcpProxy.baseURL", proxy.BaseURL); err != nil {
-		return err
-	}
-	if strings.TrimSpace(proxy.Addr) == "" {
-		return errors.New("mcpProxy.addr is required")
+	// A stdio proxy talks over its own stdin/stdout, so it has no URL or
+	// listen address to validate.
+	if proxy.Type != MCPServerTypeStdio {
+		if err := ValidateHTTPURL("mcpProxy.baseURL", proxy.BaseURL); err != nil {
+			return err
+		}
+		if strings.TrimSpace(proxy.Addr) == "" {
+			return errors.New("mcpProxy.addr is required")
+		}
 	}
 	if strings.TrimSpace(proxy.Name) == "" {
 		return errors.New("mcpProxy.name is required")
@@ -429,8 +451,10 @@ func ValidateConfig(config *Config) error {
 	if strings.TrimSpace(proxy.Version) == "" {
 		return errors.New("mcpProxy.version is required")
 	}
-	if proxy.Type != MCPServerTypeSSE && proxy.Type != MCPServerTypeStreamable {
-		return fmt.Errorf("mcpProxy.type must be %q or %q", MCPServerTypeSSE, MCPServerTypeStreamable)
+	switch proxy.Type {
+	case MCPServerTypeSSE, MCPServerTypeStreamable, MCPServerTypeStdio:
+	default:
+		return fmt.Errorf("mcpProxy.type must be %q, %q or %q", MCPServerTypeSSE, MCPServerTypeStreamable, MCPServerTypeStdio)
 	}
 	if err := validateDuration("mcpProxy.startupGracePeriod", proxy.StartupGracePeriod); err != nil {
 		return err
@@ -595,6 +619,12 @@ func Load(path string, insecure, expandEnv bool, httpHeaders string, httpTimeout
 		}
 		if !clientConfig.Options.LogEnabled.Present() {
 			clientConfig.Options.LogEnabled = conf.McpProxy.Options.LogEnabled
+		}
+		if !clientConfig.Options.DebugLogging.Present() {
+			clientConfig.Options.DebugLogging = conf.McpProxy.Options.DebugLogging
+		}
+		if !clientConfig.Options.LazyLoad.Present() {
+			clientConfig.Options.LazyLoad = conf.McpProxy.Options.LazyLoad
 		}
 		if clientConfig.Options.PingInterval == 0 {
 			clientConfig.Options.PingInterval = conf.McpProxy.Options.PingInterval
