@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -57,7 +57,7 @@ func TestParseMCPClientConfigV2(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseMCPClientConfigV2(tt.config)
+			got, err := ParseMCPClientConfigV2(tt.config)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
@@ -93,7 +93,7 @@ func TestValidateConfig(t *testing.T) {
 	t.Parallel()
 
 	t.Run("valid", func(t *testing.T) {
-		if err := validateConfig(validTestConfig()); err != nil {
+		if err := ValidateConfig(validTestConfig()); err != nil {
 			t.Fatalf("validate config: %v", err)
 		}
 	})
@@ -132,7 +132,7 @@ func TestValidateConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := validTestConfig()
 			tt.mutate(config)
-			err := validateConfig(config)
+			err := ValidateConfig(config)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
 			}
@@ -172,7 +172,7 @@ func TestValidateConfigRejectsRouteEscapingName(t *testing.T) {
 
 	config := validTestConfig()
 	config.McpServers["../escape"] = &MCPClientConfigV2{Command: "server", Options: &OptionsV2{}}
-	err := validateConfig(config)
+	err := ValidateConfig(config)
 	if err == nil || !strings.Contains(err.Error(), "../escape") {
 		t.Fatalf("validate config error = %v, want rejection of escaping name", err)
 	}
@@ -209,7 +209,7 @@ func TestLoadRejectsInvalidServerConfig(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	_, err := load(path, false, false, "", 10)
+	_, err := Load(path, false, false, "", 10)
 	if err == nil || !strings.Contains(err.Error(), `mcpServers["broken"]`) {
 		t.Fatalf("load error = %v, want broken server context", err)
 	}
@@ -231,7 +231,7 @@ func TestLoadRejectsV1Config(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	_, err := load(path, false, false, "", 10)
+	_, err := Load(path, false, false, "", 10)
 	if err == nil || !strings.Contains(err.Error(), "mcpServers") {
 		t.Fatalf("load error = %v, want a migration hint naming the v2 keys", err)
 	}
@@ -300,22 +300,22 @@ func TestValidateDurationRejectsNanosecondMistake(t *testing.T) {
 func TestDurationOptionDefaults(t *testing.T) {
 	t.Parallel()
 
-	if got := (&OptionsV2{}).pingInterval(); got != defaultPingInterval {
+	if got := (&OptionsV2{}).EffectivePingInterval(); got != defaultPingInterval {
 		t.Errorf("unset pingInterval = %v, want %v", got, defaultPingInterval)
 	}
-	if got := (&OptionsV2{PingInterval: Duration(5 * time.Second)}).pingInterval(); got != 5*time.Second {
+	if got := (&OptionsV2{PingInterval: Duration(5 * time.Second)}).EffectivePingInterval(); got != 5*time.Second {
 		t.Errorf("configured pingInterval = %v, want 5s", got)
 	}
-	if got := (&MCPProxyConfigV2{}).startupGrace(); got != defaultStartupGracePeriod {
+	if got := (&MCPProxyConfigV2{}).StartupGrace(); got != defaultStartupGracePeriod {
 		t.Errorf("unset startupGracePeriod = %v, want %v", got, defaultStartupGracePeriod)
 	}
-	if got := (&MCPProxyConfigV2{StartupGracePeriod: Duration(time.Second)}).startupGrace(); got != time.Second {
+	if got := (&MCPProxyConfigV2{StartupGracePeriod: Duration(time.Second)}).StartupGrace(); got != time.Second {
 		t.Errorf("configured startupGracePeriod = %v, want 1s", got)
 	}
-	if got := (&OptionsV2{}).reconnectInterval(); got != defaultReconnectInterval {
+	if got := (&OptionsV2{}).EffectiveReconnectInterval(); got != defaultReconnectInterval {
 		t.Errorf("unset reconnectInterval = %v, want %v", got, defaultReconnectInterval)
 	}
-	if got := (&OptionsV2{ReconnectInterval: Duration(time.Second)}).reconnectInterval(); got != time.Second {
+	if got := (&OptionsV2{ReconnectInterval: Duration(time.Second)}).EffectiveReconnectInterval(); got != time.Second {
 		t.Errorf("configured reconnectInterval = %v, want 1s", got)
 	}
 }
@@ -327,31 +327,6 @@ func TestAutoReconnectDefaultsOff(t *testing.T) {
 
 	if (&OptionsV2{}).AutoReconnect.OrElse(false) {
 		t.Error("autoReconnect must default to false")
-	}
-}
-
-// The timeout used to be parsed but never applied to sse clients.
-func TestSSEConfigCarriesTimeout(t *testing.T) {
-	t.Parallel()
-
-	conf := &MCPClientConfigV2{
-		TransportType: MCPClientTypeSSE,
-		URL:           "https://example.com/sse",
-		Timeout:       Duration(7 * time.Second),
-	}
-	parsed, err := parseMCPClientConfigV2(conf)
-	if err != nil {
-		t.Fatalf("parse config: %v", err)
-	}
-	sse, ok := parsed.(*SSEMCPClientConfig)
-	if !ok {
-		t.Fatalf("type = %T, want *SSEMCPClientConfig", parsed)
-	}
-	if time.Duration(sse.Timeout) != 7*time.Second {
-		t.Errorf("sse timeout = %v, want 7s", time.Duration(sse.Timeout))
-	}
-	if got := len(sseClientOptions(sse)); got != 2 {
-		t.Errorf("sse client options = %d, want 2 (headers and timeout)", got)
 	}
 }
 
@@ -387,7 +362,7 @@ func TestLoadInheritsProxyOptions(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	config, err := load(path, false, false, "", 10)
+	config, err := Load(path, false, false, "", 10)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -406,7 +381,7 @@ func TestLoadInheritsProxyOptions(t *testing.T) {
 	if !inherits.LogEnabled.OrElse(false) {
 		t.Error("inherited logEnabled = false, want true")
 	}
-	if got := inherits.pingInterval(); got != 5*time.Second {
+	if got := inherits.EffectivePingInterval(); got != 5*time.Second {
 		t.Errorf("inherited pingInterval = %v, want 5s", got)
 	}
 
@@ -418,7 +393,7 @@ func TestLoadInheritsProxyOptions(t *testing.T) {
 	if len(overrides.AuthTokens) != 1 || overrides.AuthTokens[0] != "own" {
 		t.Errorf("overridden authTokens = %v, want [own]", overrides.AuthTokens)
 	}
-	if got := overrides.pingInterval(); got != time.Second {
+	if got := overrides.EffectivePingInterval(); got != time.Second {
 		t.Errorf("overridden pingInterval = %v, want 1s", got)
 	}
 
@@ -427,13 +402,13 @@ func TestLoadInheritsProxyOptions(t *testing.T) {
 	if !inherits.AutoReconnect.Present() || !inherits.AutoReconnect.OrElse(false) {
 		t.Error("inherited autoReconnect = false, want true")
 	}
-	if got := inherits.reconnectInterval(); got != time.Second {
+	if got := inherits.EffectiveReconnectInterval(); got != time.Second {
 		t.Errorf("inherited reconnectInterval = %v, want 1s", got)
 	}
 	if overrides.AutoReconnect.OrElse(true) {
 		t.Error("overridden autoReconnect = true, want false")
 	}
-	if got := overrides.reconnectInterval(); got != 2*time.Second {
+	if got := overrides.EffectiveReconnectInterval(); got != 2*time.Second {
 		t.Errorf("overridden reconnectInterval = %v, want 2s", got)
 	}
 }

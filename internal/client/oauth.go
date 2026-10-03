@@ -1,17 +1,15 @@
-package main
+package client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -19,7 +17,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// buildOAuthConfig turns our JSON-facing OAuthClientConfig into the
+// buildOAuthConfig turns our JSON-facing config.OAuthClientConfig into the
 // transport.OAuthConfig the mcp-go client library expects, backed by a
 // FileTokenStore so tokens survive restarts and are shared between the
 // one-off `-authorize` run and the long-running daemon.
@@ -31,14 +29,14 @@ import (
 // every token refresh would silently fail (client_id="" gets rejected by
 // the provider) - the one-off authorize process's dynamic registration
 // only ever lived in that process's memory otherwise.
-func buildOAuthConfig(serverName string, conf *OAuthClientConfig) (transport.OAuthConfig, error) {
+func buildOAuthConfig(serverName string, conf *config.OAuthClientConfig) (transport.OAuthConfig, error) {
 	tokenPath, err := oauthTokenPath(serverName)
 	if err != nil {
 		return transport.OAuthConfig{}, err
 	}
 	redirectURI := conf.RedirectURI
 	if redirectURI == "" {
-		redirectURI = defaultOAuthRedirectURI
+		redirectURI = config.DefaultOAuthRedirectURI
 	}
 	clientID, clientSecret := conf.ClientID, conf.ClientSecret
 	if clientID == "" {
@@ -61,32 +59,32 @@ func buildOAuthConfig(serverName string, conf *OAuthClientConfig) (transport.OAu
 	}, nil
 }
 
-// runAuthorize performs a one-time interactive OAuth authorization for a
+// RunAuthorize performs a one-time interactive OAuth authorization for a
 // single configured server: it registers a dynamic client if needed, opens
 // a browser to the provider's consent screen, waits for the local redirect
 // callback, exchanges the code for a token, and persists it via the same
 // FileTokenStore the daemon reads from. Intended to be run by hand, in a
 // real desktop session with a browser - never by the unattended daemon.
-func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpHeaders string, httpTimeout int) error {
-	config, err := load(configPath, insecure, expandEnv, httpHeaders, httpTimeout)
+func RunAuthorize(configPath, serverName string, insecure, expandEnv bool, httpHeaders string, httpTimeout int) error {
+	conf, err := config.Load(configPath, insecure, expandEnv, httpHeaders, httpTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-	clientConfig, ok := config.McpServers[serverName]
+	clientConfig, ok := conf.McpServers[serverName]
 	if !ok {
 		return fmt.Errorf("no server named %q in config", serverName)
 	}
-	clientInfo, err := parseMCPClientConfigV2(clientConfig)
+	clientInfo, err := config.ParseMCPClientConfigV2(clientConfig)
 	if err != nil {
 		return err
 	}
 
-	var oauthConf *OAuthClientConfig
+	var oauthConf *config.OAuthClientConfig
 	var mcpClient *client.Client
 	switch v := clientInfo.(type) {
-	case *StdioMCPClientConfig:
+	case *config.StdioMCPClientConfig:
 		return fmt.Errorf("server %q is a stdio server, OAuth authorization does not apply", serverName)
-	case *SSEMCPClientConfig:
+	case *config.SSEMCPClientConfig:
 		if v.OAuth == nil {
 			return fmt.Errorf("server %q has no oauth config; add mcpServers.%s.oauth to config.json first", serverName, serverName)
 		}
@@ -96,7 +94,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 			return bErr
 		}
 		mcpClient, err = client.NewOAuthSSEClient(v.URL, oc, sseClientOptions(v)...)
-	case *StreamableMCPClientConfig:
+	case *config.StreamableMCPClientConfig:
 		if v.OAuth == nil {
 			return fmt.Errorf("server %q has no oauth config; add mcpServers.%s.oauth to config.json first", serverName, serverName)
 		}
@@ -116,7 +114,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 
 	redirectURI := oauthConf.RedirectURI
 	if redirectURI == "" {
-		redirectURI = defaultOAuthRedirectURI
+		redirectURI = config.DefaultOAuthRedirectURI
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -127,7 +125,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 			return authErr
 		}
 		if err := mcpClient.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start client after authorization: %w", redactURLCredentials(err))
+			return fmt.Errorf("failed to start client after authorization: %w", config.RedactURLCredentials(err))
 		}
 	}
 
@@ -139,7 +137,7 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 			return authErr
 		}
 		if _, err := mcpClient.Initialize(ctx, initRequest); err != nil {
-			return fmt.Errorf("failed to initialize after authorization: %w", redactURLCredentials(err))
+			return fmt.Errorf("failed to initialize after authorization: %w", config.RedactURLCredentials(err))
 		}
 	}
 
@@ -152,11 +150,11 @@ func runAuthorize(configPath, serverName string, insecure, expandEnv bool, httpH
 // since a transport error embeds the downstream URL) as-is.
 func authorizeInteractively(ctx context.Context, err error, serverName, redirectURI string) error {
 	if !client.IsOAuthAuthorizationRequiredError(err) {
-		return redactURLCredentials(err)
+		return config.RedactURLCredentials(err)
 	}
 	oauthHandler := client.GetOAuthHandler(err)
 
-	callbackPath, addr, pErr := parseRedirectURI(redirectURI)
+	callbackPath, addr, pErr := config.ParseRedirectURI(redirectURI)
 	if pErr != nil {
 		return pErr
 	}
@@ -226,43 +224,6 @@ func oauthAwareError(serverName string, err error) error {
 		return fmt.Errorf("not authorized yet, run: mcp-proxy -authorize %s -config <path>: %w", serverName, err)
 	}
 	return err
-}
-
-func parseRedirectURI(redirectURI string) (path string, addr string, err error) {
-	// Echo a redacted form: this error is printed and logged, and the URI could
-	// carry a credential in its userinfo or query. A URL that does not parse is
-	// replaced entirely, since its raw text cannot be redacted reliably.
-	display := redactURLString(redirectURI)
-	u, err := url.Parse(redirectURI)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid redirect URI %q", display)
-	}
-	if u.Scheme != "http" {
-		return "", "", fmt.Errorf("redirect URI %q must use http", display)
-	}
-	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return "", "", fmt.Errorf("redirect URI %q cannot contain user info, query, or fragment", display)
-	}
-	hostname := u.Hostname()
-	if hostname == "" {
-		return "", "", fmt.Errorf("redirect URI %q must include a host", display)
-	}
-	ip := net.ParseIP(hostname)
-	if !strings.EqualFold(hostname, "localhost") && (ip == nil || !ip.IsLoopback()) {
-		return "", "", fmt.Errorf("redirect URI %q must use localhost or a loopback IP", display)
-	}
-	port := u.Port()
-	if port == "" {
-		return "", "", fmt.Errorf("redirect URI %q must include an explicit port", display)
-	}
-	portNumber, err := strconv.Atoi(port)
-	if err != nil || portNumber < 1 || portNumber > 65535 {
-		return "", "", fmt.Errorf("redirect URI %q contains an invalid port", display)
-	}
-	if u.Path == "" || u.Path == "/" {
-		return "", "", fmt.Errorf("redirect URI %q must include a callback path", display)
-	}
-	return u.Path, net.JoinHostPort(hostname, port), nil
 }
 
 func startOAuthCallbackServer(addr, callbackPath, expectedState string, callbackChan chan<- map[string]string) (*http.Server, error) {

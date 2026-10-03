@@ -1,4 +1,4 @@
-module github.com/tbxark/mcp-proxy
+module github.com/voicetreelab/lazy-mcp
 
 go 1.25.5
 

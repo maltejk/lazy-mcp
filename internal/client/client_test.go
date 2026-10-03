@@ -1,10 +1,11 @@
-package main
+package client
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -65,8 +66,8 @@ func TestMCPHTTPClientRequestsUncompressedResponses(t *testing.T) {
 		"accept-encoding": "gzip",
 		"X-Test":          "value",
 	}
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           server.URL,
 		Headers:       configuredHeaders,
 	})
@@ -95,12 +96,12 @@ func TestMCPHTTPClientRequestsUncompressedResponses(t *testing.T) {
 func TestMCPServerListResourcesReturnsEmptyArrayNotNull(t *testing.T) {
 	t.Parallel()
 
-	server, err := newMCPServer("test", &MCPProxyConfigV2{
-		Type:    MCPServerTypeStreamable,
+	server, err := newMCPServer("test", &config.MCPProxyConfigV2{
+		Type:    config.MCPServerTypeStreamable,
 		Version: "test",
 		BaseURL: "http://localhost:9090",
-	}, &MCPClientConfigV2{
-		Options: &OptionsV2{},
+	}, &config.MCPClientConfigV2{
+		Options: &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPServer: %v", err)
@@ -460,11 +461,11 @@ func serverToolInputSchema(t *testing.T, mcpServer *server.MCPServer, toolName s
 func newProxyServerForTest(t *testing.T) *server.MCPServer {
 	t.Helper()
 
-	proxyServer, err := newMCPServer("test", &MCPProxyConfigV2{
-		Type:    MCPServerTypeStreamable,
+	proxyServer, err := newMCPServer("test", &config.MCPProxyConfigV2{
+		Type:    config.MCPServerTypeStreamable,
 		Version: "1",
 		BaseURL: "http://localhost:9090",
-	}, &MCPClientConfigV2{Options: &OptionsV2{}})
+	}, &config.MCPClientConfigV2{Options: &config.OptionsV2{}})
 	if err != nil {
 		t.Fatalf("newMCPServer: %v", err)
 	}
@@ -480,10 +481,10 @@ func TestCatalogRegistrationDropsStaleToolsOnReRegister(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha", "beta")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -521,10 +522,10 @@ func TestCatalogRegistrationPreservesInputSchemaPropertyOrder(t *testing.T) {
 	// Deliberately not alphabetical: sorted order would be alpha, zeta.
 	downstream.setRawTools(`[{"name":"ordered","inputSchema":{"type":"object","properties":{"zeta":{"type":"string"},"alpha":{"type":"number"}},"required":["zeta"]}}]`)
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -561,8 +562,8 @@ func TestCatalogTimeoutBoundsHungToolsList(t *testing.T) {
 	downstream.setTools("alpha")
 	downstream.hangToolsListCalls(true)
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 	})
 	if err != nil {
@@ -596,8 +597,8 @@ func TestNilOptionsClientDoesNotPanicOnConnect(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 	})
 	if err != nil {

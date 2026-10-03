@@ -1,10 +1,11 @@
-package main
+package client
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -46,10 +47,10 @@ func TestResourceTemplateWithoutURITemplateIsSkipped(t *testing.T) {
 		map[string]any{"name": "good", "uriTemplate": "test://echo/{word}"},
 	)
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -105,18 +106,18 @@ func TestToolFilterFuncPreservesCompatibility(t *testing.T) {
 	// any of these without a major release.
 	tests := []struct {
 		name    string
-		options *OptionsV2
+		options *config.OptionsV2
 		tool    string
 		want    bool
 	}{
 		{name: "nil options allows", options: nil, tool: "any", want: true},
-		{name: "nil filter allows", options: &OptionsV2{}, tool: "any", want: true},
-		{name: "empty allow list still allows (legacy)", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeAllow}}, tool: "any", want: true},
-		{name: "allow list membership", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeAllow, List: []string{"a"}}}, tool: "a", want: true},
-		{name: "allow list exclusion", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeAllow, List: []string{"a"}}}, tool: "b", want: false},
-		{name: "empty block list allows", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeBlock}}, tool: "any", want: true},
-		{name: "block list excludes", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeBlock, List: []string{"b"}}}, tool: "b", want: false},
-		{name: "unknown mode still allows (legacy)", options: &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterMode("nonsense")}}, tool: "any", want: true},
+		{name: "nil filter allows", options: &config.OptionsV2{}, tool: "any", want: true},
+		{name: "empty allow list still allows (legacy)", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeAllow}}, tool: "any", want: true},
+		{name: "allow list membership", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeAllow, List: []string{"a"}}}, tool: "a", want: true},
+		{name: "allow list exclusion", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeAllow, List: []string{"a"}}}, tool: "b", want: false},
+		{name: "empty block list allows", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeBlock}}, tool: "any", want: true},
+		{name: "block list excludes", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeBlock, List: []string{"b"}}}, tool: "b", want: false},
+		{name: "unknown mode still allows (legacy)", options: &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterMode("nonsense")}}, tool: "any", want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -136,10 +137,10 @@ func TestEmptyAllowListStillExposesAllTools(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha", "beta")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{ToolFilter: &ToolFilterConfig{Mode: ToolFilterModeAllow}},
+		Options:       &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeAllow}},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -162,10 +163,10 @@ func TestDownstreamExecutionMetadataIsStripped(t *testing.T) {
 	downstream.setTools("danger")
 	downstream.setToolExecution(map[string]any{"taskSupport": "required"})
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -203,10 +204,10 @@ func TestResourceReadHonorsRequestTimeout(t *testing.T) {
 	downstream.setResources("test://hang")
 	downstream.hangMethodsNamed("resources/read")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -248,10 +249,10 @@ func TestPromptGetHonorsRequestTimeout(t *testing.T) {
 	downstream.setPrompts("hang")
 	downstream.hangMethodsNamed("prompts/get")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -292,7 +293,7 @@ func TestRedactURLCredentials(t *testing.T) {
 	_ = credentialed
 	err := &url.Error{Op: "Post", URL: "https://mcp.example.com/mcp?key=SECRET&token=OTHER", Err: errors.New("dial tcp: refused")}
 
-	redacted := redactURLCredentials(err)
+	redacted := config.RedactURLCredentials(err)
 	message := redacted.Error()
 	for _, secret := range []string{"SECRET", "OTHER", "key=", "token="} {
 		if strings.Contains(message, secret) {
@@ -308,10 +309,10 @@ func TestRedactURLCredentials(t *testing.T) {
 
 	// A non-URL error is returned unchanged.
 	plain := errors.New("boom")
-	if got := redactURLCredentials(plain); got != plain {
+	if got := config.RedactURLCredentials(plain); got != plain {
 		t.Errorf("plain error should pass through, got %v", got)
 	}
-	if got := redactURLCredentials(nil); got != nil {
+	if got := config.RedactURLCredentials(nil); got != nil {
 		t.Errorf("nil error should stay nil, got %v", got)
 	}
 }
@@ -325,11 +326,11 @@ func TestToolCallErrorRedactsURLCredential(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
 
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		// The credential the docs recommend putting in the URL query.
 		URL:     downstream.url + "?key=" + secret,
-		Options: &OptionsV2{},
+		Options: &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -386,12 +387,12 @@ func TestGlobalToolFilterIsNotInherited(t *testing.T) {
 		}
 	}`)
 
-	config, err := load(path, false, true, "", 10)
+	conf, err := config.Load(path, false, true, "", 10)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 
-	server := config.McpServers["inherits"]
+	server := conf.McpServers["inherits"]
 	if server == nil || server.Options == nil {
 		t.Fatal("server options should be defaulted after load")
 	}
@@ -408,11 +409,11 @@ func TestGlobalToolFilterIsNotInherited(t *testing.T) {
 		"mcpProxy": {"baseURL": "http://127.0.0.1:9090","addr": ":9090","name": "proxy","version": "1.0.0","type": "streamable-http"},
 		"mcpServers": {"restricted": {"command": "/bin/true", "options": {"toolFilter": {"mode": "block", "list": ["blocked"]}}}}
 	}`)
-	config, err = load(path, false, true, "", 10)
+	conf, err = config.Load(path, false, true, "", 10)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	restricted := config.McpServers["restricted"]
+	restricted := conf.McpServers["restricted"]
 	if restricted == nil || restricted.Options == nil || restricted.Options.ToolFilter == nil {
 		t.Fatal("per-server toolFilter should survive load")
 	}
@@ -504,7 +505,7 @@ func TestRedactURLCredentialsHandlesUnparseableURL(t *testing.T) {
 		"http://user:pw@ho st/x?key=PARSE_SECRET#frag",
 	} {
 		urlErr := &url.Error{Op: "Post", URL: raw, Err: errors.New("boom")}
-		got := redactURLCredentials(urlErr).Error()
+		got := config.RedactURLCredentials(urlErr).Error()
 		if strings.Contains(got, "PARSE_SECRET") {
 			t.Errorf("unparseable URL %q leaked its query credential: %s", raw, got)
 		}
@@ -516,7 +517,7 @@ func TestRedactURLCredentialsHandlesUnparseableURL(t *testing.T) {
 	// A URL with no credential is left untouched, and the original error stays
 	// in the chain so classification is preserved.
 	clean := &url.Error{Op: "Post", URL: "https://mcp.example.com/mcp", Err: errors.New("boom")}
-	if got := redactURLCredentials(clean); got != error(clean) {
+	if got := config.RedactURLCredentials(clean); got != error(clean) {
 		t.Errorf("a credential-free URL should pass through unchanged, got %v", got)
 	}
 }
@@ -530,7 +531,7 @@ func TestFatalStartupErrorIsRedacted(t *testing.T) {
 
 	panicIfInvalid := optional.NewField(true)
 
-	fatal := fatalStartupError(&MCPClientConfigV2{Options: &OptionsV2{PanicIfInvalid: panicIfInvalid}}, urlErr)
+	fatal := fatalStartupError(&config.MCPClientConfigV2{Options: &config.OptionsV2{PanicIfInvalid: panicIfInvalid}}, urlErr)
 	if fatal == nil {
 		t.Fatal("panicIfInvalid should make the failure fatal")
 	}
@@ -543,7 +544,7 @@ func TestFatalStartupErrorIsRedacted(t *testing.T) {
 	}
 
 	// Without panicIfInvalid the failure is not fatal at all.
-	if got := fatalStartupError(&MCPClientConfigV2{Options: &OptionsV2{}}, urlErr); got != nil {
+	if got := fatalStartupError(&config.MCPClientConfigV2{Options: &config.OptionsV2{}}, urlErr); got != nil {
 		t.Errorf("a non-fatal startup error should return nil, got %v", got)
 	}
 }
@@ -641,10 +642,10 @@ func TestURLRedactionCoversReconnectAndDoctorSinks(t *testing.T) {
 	// Reconnect path: the error that reaches the log must be redacted.
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
-	mcpClient, err := newMCPClient("test", &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url + "?key=SINK_SECRET",
-		Options:       &OptionsV2{},
+		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
 		t.Fatalf("newMCPClient: %v", err)
@@ -658,7 +659,7 @@ func TestURLRedactionCoversReconnectAndDoctorSinks(t *testing.T) {
 	if reconnectErr == nil {
 		t.Fatal("expected the reconnect to fail after the downstream closed")
 	}
-	if strings.Contains(redactURLCredentials(reconnectErr).Error(), "SINK_SECRET") {
+	if strings.Contains(config.RedactURLCredentials(reconnectErr).Error(), "SINK_SECRET") {
 		t.Error("the reconnect error still carries the URL query credential into the log")
 	}
 
@@ -679,13 +680,13 @@ func TestRedactURLCredentialsHandlesQuotedSecret(t *testing.T) {
 
 	for _, secret := range []string{`SEC"RET`, `SEC\RET`, `SEC\"RET`, "SEC`RET"} {
 		urlErr := &url.Error{Op: "Post", URL: "https://mcp.example.com/mcp?key=" + secret, Err: errors.New("refused")}
-		got := redactURLCredentials(urlErr).Error()
+		got := config.RedactURLCredentials(urlErr).Error()
 		if strings.Contains(got, secret) {
 			t.Errorf("secret %q survived redaction: %s", secret, got)
 		}
 		// The failure-classification chain must survive too.
 		var asURLErr *url.Error
-		if !errors.As(redactURLCredentials(urlErr), &asURLErr) {
+		if !errors.As(config.RedactURLCredentials(urlErr), &asURLErr) {
 			t.Errorf("errors.As(*url.Error) failed after redaction of %q", secret)
 		}
 	}
@@ -697,7 +698,7 @@ func TestRedactURLCredentialsNestedWrapper(t *testing.T) {
 	t.Parallel()
 
 	wrapped := fmt.Errorf("transport error: %w", &url.Error{Op: "Post", URL: `http://127.0.0.1:1/mcp?key=NEST"ED`, Err: errors.New("refused")})
-	got := redactURLCredentials(wrapped).Error()
+	got := config.RedactURLCredentials(wrapped).Error()
 	if strings.Contains(got, `NEST"ED`) || strings.Contains(got, "key=") {
 		t.Fatalf("nested transport error leaked the credential: %s", got)
 	}
@@ -736,7 +737,7 @@ func TestValidateHTTPURLRedactsMalformedURLCredential(t *testing.T) {
 		"//user:NOSCHEMESECRET@ho st/mcp?key=Q",
 		"https://user:SUPERSECRET",
 	} {
-		err := validateHTTPURL("mcpServers[\"bad\"].url", raw)
+		err := config.ValidateHTTPURL("mcpServers[\"bad\"].url", raw)
 		if err == nil {
 			t.Errorf("%q: expected a malformed URL to be rejected", raw)
 			continue
@@ -764,7 +765,7 @@ func TestRedactURLStringTruncatedUserinfo(t *testing.T) {
 		{"scheme://user:pass@host:8080/path?k=v#f", []string{"pass", "k=v", "f"}},
 	}
 	for _, tt := range tests {
-		got := redactURLString(tt.raw)
+		got := config.RedactURLString(tt.raw)
 		for _, secret := range tt.mustNotHave {
 			if strings.Contains(got, secret) {
 				t.Errorf("redactURLString(%q) = %q still contains %q", tt.raw, got, secret)
@@ -775,7 +776,7 @@ func TestRedactURLStringTruncatedUserinfo(t *testing.T) {
 	// A credential-free URL is returned byte-identical, and the port survives
 	// when there is a path, so diagnostics stay useful.
 	for _, clean := range []string{"http://127.0.0.1:9/mcp", "https://mcp.example.com/sse"} {
-		if got := redactURLString(clean); got != clean {
+		if got := config.RedactURLString(clean); got != clean {
 			t.Errorf("credential-free URL changed: %q -> %q", clean, got)
 		}
 	}
@@ -801,7 +802,7 @@ func TestRedactURLCredentialsDropsContaminatedReason(t *testing.T) {
 		Err: errors.New(`invalid port ":SUPERSECRET" after host`),
 	}
 
-	message := redactURLCredentials(urlErr).Error()
+	message := config.RedactURLCredentials(urlErr).Error()
 	if strings.Contains(message, "SUPERSECRET") {
 		t.Fatalf("credential survived in the parse reason: %s", message)
 	}
@@ -810,7 +811,7 @@ func TestRedactURLCredentialsDropsContaminatedReason(t *testing.T) {
 	}
 	// The parse error must still be reachable for callers that inspect it.
 	var asURLErr *url.Error
-	if !errors.As(redactURLCredentials(urlErr), &asURLErr) {
+	if !errors.As(config.RedactURLCredentials(urlErr), &asURLErr) {
 		t.Error("errors.As(*url.Error) must still succeed")
 	}
 }
@@ -836,7 +837,7 @@ func TestRedactURLStringCredentialLocations(t *testing.T) {
 	for _, secret := range secrets {
 		for _, template := range templates {
 			raw := strings.ReplaceAll(template, "%s", secret)
-			if got := redactURLString(raw); strings.Contains(got, secret) {
+			if got := config.RedactURLString(raw); strings.Contains(got, secret) {
 				t.Errorf("template %q leaked secret %q -> %q", template, secret, got)
 			}
 		}
@@ -844,18 +845,18 @@ func TestRedactURLStringCredentialLocations(t *testing.T) {
 
 	// Inputs that do not parse are replaced wholesale, never echoed.
 	for _, raw := range []string{"not a url at all", ":://", "user:SUPERSECRET", "ho st", "//u:S@ho st/p"} {
-		got := redactURLString(raw)
+		got := config.RedactURLString(raw)
 		if strings.Contains(got, "SUPERSECRET") || strings.Contains(got, "S@") {
 			t.Errorf("unparseable %q leaked: %q", raw, got)
 		}
-		if got != redactedURLPlaceholder {
+		if got != config.RedactedURLPlaceholder {
 			t.Errorf("unparseable %q should become the placeholder, got %q", raw, got)
 		}
 	}
 
 	// Credential-free URLs stay byte-identical so diagnostics remain useful.
 	for _, clean := range []string{"http://127.0.0.1:9/mcp", "https://mcp.example.com/sse", "https://h:8443/p"} {
-		if got := redactURLString(clean); got != clean {
+		if got := config.RedactURLString(clean); got != clean {
 			t.Errorf("clean URL changed: %q -> %q", clean, got)
 		}
 	}
@@ -869,7 +870,7 @@ func TestCheckOAuthTokenRejectsEmptyAccessToken(t *testing.T) {
 	const emptyAccess = "reviewfix-empty-access"
 	const valid = "reviewfix-valid"
 
-	conf := &MCPClientConfigV2{URL: "https://mcp.example.com/mcp", OAuth: &OAuthClientConfig{}}
+	conf := &config.MCPClientConfigV2{URL: "https://mcp.example.com/mcp", OAuth: &config.OAuthClientConfig{}}
 
 	writeTestToken(t, refreshOnly, &transport.Token{RefreshToken: "r"})
 	res := checkServerAuth(refreshOnly, conf)

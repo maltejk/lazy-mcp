@@ -1,5 +1,5 @@
 BUILD_DIR=./build
-MODULE := github.com/tbxark/mcp-proxy
+MODULE := github.com/voicetreelab/lazy-mcp
 BUILD=$(shell git rev-parse --short HEAD)@$(shell date +%s)
 CURRENT_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 CURRENT_ARCH := $(shell uname -m | tr '[:upper:]' '[:lower:]')

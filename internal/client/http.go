@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -110,7 +111,7 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 // 503 while clients are still mounting their routes, and again whenever a
 // downstream connection that used to work has broken, so a load balancer can
 // route around a proxy whose backends are gone.
-func healthHandler(config *Config, readiness func() readinessReport) http.HandlerFunc {
+func healthHandler(conf *config.Config, readiness func() readinessReport) http.HandlerFunc {
 	type healthResponse struct {
 		Name        string   `json:"name"`
 		ServerCount int      `json:"serverCount"`
@@ -119,16 +120,16 @@ func healthHandler(config *Config, readiness func() readinessReport) http.Handle
 		Version     string   `json:"version"`
 	}
 	enabled := 0
-	for _, clientConfig := range config.McpServers {
+	for _, clientConfig := range conf.McpServers {
 		if clientConfig.Options == nil || !clientConfig.Options.Disabled {
 			enabled++
 		}
 	}
 	body := healthResponse{
-		Name:        config.McpProxy.Name,
+		Name:        conf.McpProxy.Name,
 		ServerCount: enabled,
 		Status:      "ok",
-		Version:     config.McpProxy.Version,
+		Version:     conf.McpProxy.Version,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		code, resp := http.StatusOK, body
@@ -181,9 +182,9 @@ type readinessReport struct {
 // The returned error is redacted, because it is propagated out of the startup
 // errorGroup and logged by main: a transport error embeds the downstream URL,
 // which may carry a credential in its query.
-func fatalStartupError(clientConfig *MCPClientConfigV2, err error) error {
-	if clientConfig.Options.panicIfInvalid() {
-		return redactURLCredentials(err)
+func fatalStartupError(clientConfig *config.MCPClientConfigV2, err error) error {
+	if clientConfig.Options.EffectivePanicIfInvalid() {
+		return config.RedactURLCredentials(err)
 	}
 	return nil
 }
@@ -191,8 +192,8 @@ func fatalStartupError(clientConfig *MCPClientConfigV2, err error) error {
 // clientStartupError reports a downstream that could not be started and will
 // not be retried, so the rest of the proxy still serves. It returns err when
 // panicIfInvalid makes the failure fatal for the whole process.
-func clientStartupError(name string, clientConfig *MCPClientConfigV2, err error) error {
-	slog.Error("Failed to start client", "client", name, "err", redactURLCredentials(err))
+func clientStartupError(name string, clientConfig *config.MCPClientConfigV2, err error) error {
+	slog.Error("Failed to start client", "client", name, "err", config.RedactURLCredentials(err))
 	return fatalStartupError(clientConfig, err)
 }
 
@@ -222,12 +223,12 @@ func retryWait(ctx context.Context, interval time.Duration) bool {
 	}
 }
 
-func startHTTPServer(config *Config) error {
-	baseURL, uErr := url.Parse(config.McpProxy.BaseURL)
+func StartHTTPServer(conf *config.Config) error {
+	baseURL, uErr := url.Parse(conf.McpProxy.BaseURL)
 	if uErr != nil {
-		// baseURL is validated in validateConfig, so this is belt-and-braces;
+		// baseURL is validated in config.ValidateConfig, so this is belt-and-braces;
 		// redact anyway since the parse error embeds the URL.
-		return redactURLCredentials(uErr)
+		return config.RedactURLCredentials(uErr)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,15 +237,15 @@ func startHTTPServer(config *Config) error {
 	var errorGroup errgroup.Group
 	httpMux := http.NewServeMux()
 	httpServer := &http.Server{
-		Addr:    config.McpProxy.Addr,
+		Addr:    conf.McpProxy.Addr,
 		Handler: httpMux,
 	}
 	info := mcp.Implementation{
-		Name: config.McpProxy.Name,
+		Name: conf.McpProxy.Name,
 	}
 	// clients is filled in from the per-server goroutines below.
 	var clientsMu sync.Mutex
-	clients := make(map[string]*Client, len(config.McpServers))
+	clients := make(map[string]*Client, len(conf.McpServers))
 
 	// shuttingDown tells the startup goroutines below that shutdown has already
 	// walked the clients map, so a client that finishes connecting after that
@@ -275,10 +276,10 @@ func startHTTPServer(config *Config) error {
 		slices.Sort(report.unhealthy)
 		return report
 	}
-	httpMux.HandleFunc("GET /_healthz", healthHandler(config, nil))
-	httpMux.HandleFunc("GET /_readyz", healthHandler(config, readiness))
+	httpMux.HandleFunc("GET /_healthz", healthHandler(conf, nil))
+	httpMux.HandleFunc("GET /_readyz", healthHandler(conf, readiness))
 
-	for name, clientConfig := range config.McpServers {
+	for name, clientConfig := range conf.McpServers {
 		if clientConfig.Options.Disabled {
 			slog.Info("Disabled", "client", name)
 			continue
@@ -293,7 +294,7 @@ func startHTTPServer(config *Config) error {
 				// and the logger records requests that auth rejects.
 				middlewares := make([]MiddlewareFunc, 0)
 				middlewares = append(middlewares, recoverMiddleware(name))
-				if clientConfig.Options.logEnabled() {
+				if clientConfig.Options.EffectiveLogEnabled() {
 					middlewares = append(middlewares, loggerMiddleware(name))
 				}
 				if len(clientConfig.Options.AuthTokens) > 0 {
@@ -319,8 +320,8 @@ func startHTTPServer(config *Config) error {
 
 		errorGroup.Go(func() error {
 			slog.Info("Connecting", "client", name)
-			autoReconnect := clientConfig.Options.autoReconnect()
-			interval := clientConfig.Options.reconnectInterval()
+			autoReconnect := clientConfig.Options.EffectiveAutoReconnect()
+			interval := clientConfig.Options.EffectiveReconnectInterval()
 
 			var (
 				mcpClient *Client
@@ -337,14 +338,14 @@ func startHTTPServer(config *Config) error {
 						// failure that ends the attempt, and stay quiet on the
 						// retry path (an unreachable backend is not an error).
 						if fatal := fatalStartupError(clientConfig, err); fatal != nil {
-							slog.Error("Failed to start client", "client", name, "err", redactURLCredentials(err))
+							slog.Error("Failed to start client", "client", name, "err", config.RedactURLCredentials(err))
 							return fatal
 						}
 						if !autoReconnect {
-							slog.Error("Failed to start client", "client", name, "err", redactURLCredentials(err))
+							slog.Error("Failed to start client", "client", name, "err", config.RedactURLCredentials(err))
 							return nil
 						}
-						slog.Warn("Retrying client creation", "client", name, "err", redactURLCredentials(err), "retryIn", interval)
+						slog.Warn("Retrying client creation", "client", name, "err", config.RedactURLCredentials(err), "retryIn", interval)
 						if !retryWait(ctx, interval) {
 							return nil
 						}
@@ -366,7 +367,7 @@ func startHTTPServer(config *Config) error {
 					clients[name] = mcpClient
 					clientsMu.Unlock()
 
-					newServer, sErr := newMCPServer(name, config.McpProxy, clientConfig)
+					newServer, sErr := newMCPServer(name, conf.McpProxy, clientConfig)
 					if sErr != nil {
 						// A malformed server definition will not fix itself, so
 						// it is never retried.
@@ -382,7 +383,7 @@ func startHTTPServer(config *Config) error {
 					return nil
 				}
 				if fatal := fatalStartupError(clientConfig, err); fatal != nil {
-					slog.Error("Failed to start client", "client", name, "err", redactURLCredentials(err))
+					slog.Error("Failed to start client", "client", name, "err", config.RedactURLCredentials(err))
 					return fatal
 				}
 				if mcpClient.closed.Load() {
@@ -390,20 +391,20 @@ func startHTTPServer(config *Config) error {
 					return nil
 				}
 				if !autoReconnect {
-					slog.Error("Failed to start client", "client", name, "err", redactURLCredentials(err))
+					slog.Error("Failed to start client", "client", name, "err", config.RedactURLCredentials(err))
 					return nil
 				}
 				if permanentStartupError(err) {
 					// Retrying cannot help - interactive OAuth is needed. Report
 					// it once, with the actionable message, and stop rather than
 					// hammering the provider every interval.
-					slog.Error("Not retrying, downstream cannot connect without intervention", "client", name, "err", redactURLCredentials(err))
+					slog.Error("Not retrying, downstream cannot connect without intervention", "client", name, "err", config.RedactURLCredentials(err))
 					return nil
 				}
 				// The backend is simply not up yet: wait and try again. The
 				// route is mounted only once it connects, so readiness keeps
 				// reporting it as not mounted until then.
-				slog.Warn("Retrying connection", "client", name, "err", redactURLCredentials(err), "retryIn", interval)
+				slog.Warn("Retrying connection", "client", name, "err", config.RedactURLCredentials(err), "retryIn", interval)
 				if !retryWait(ctx, interval) {
 					return nil
 				}
@@ -418,7 +419,7 @@ func startHTTPServer(config *Config) error {
 
 	serverDone := make(chan error, 1)
 	go func() {
-		slog.Info("Starting server", "type", config.McpProxy.Type, "addr", config.McpProxy.Addr)
+		slog.Info("Starting server", "type", conf.McpProxy.Type, "addr", conf.McpProxy.Addr)
 		hErr := httpServer.ListenAndServe()
 		if errors.Is(hErr, http.ErrServerClosed) {
 			hErr = nil
@@ -459,7 +460,7 @@ func startHTTPServer(config *Config) error {
 	// A downstream can be slow for legitimate reasons (npx fetching a package on
 	// first run) and the servers that did connect are already serving, so
 	// readiness waits only this long for the stragglers.
-	grace := config.McpProxy.startupGrace()
+	grace := conf.McpProxy.StartupGrace()
 	graceTimer := time.NewTimer(grace)
 	defer graceTimer.Stop()
 

@@ -1,6 +1,7 @@
-package main
+package client
 
 import (
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"io"
 	"net"
 	"net/http"
@@ -26,7 +27,7 @@ func TestParseRedirectURI(t *testing.T) {
 	}
 	for _, tt := range valid {
 		t.Run(tt.name, func(t *testing.T) {
-			path, addr, err := parseRedirectURI(tt.raw)
+			path, addr, err := config.ParseRedirectURI(tt.raw)
 			if err != nil {
 				t.Fatalf("parse redirect URI: %v", err)
 			}
@@ -53,7 +54,7 @@ func TestParseRedirectURI(t *testing.T) {
 	}
 	for _, tt := range invalid {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := parseRedirectURI(tt.raw)
+			_, _, err := config.ParseRedirectURI(tt.raw)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
 			}

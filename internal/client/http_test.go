@@ -1,7 +1,8 @@
-package main
+package client
 
 import (
 	"errors"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -94,16 +95,16 @@ func TestAuthMiddleware(t *testing.T) {
 func TestHealthHandlerReadiness(t *testing.T) {
 	t.Parallel()
 
-	config := &Config{
-		McpProxy: &MCPProxyConfigV2{Name: "test", Version: "test"},
-		McpServers: map[string]*MCPClientConfigV2{
-			"enabled":  {Command: "server", Options: &OptionsV2{}},
-			"disabled": {Command: "server", Options: &OptionsV2{Disabled: true}},
+	conf := &config.Config{
+		McpProxy: &config.MCPProxyConfigV2{Name: "test", Version: "test"},
+		McpServers: map[string]*config.MCPClientConfigV2{
+			"enabled":  {Command: "server", Options: &config.OptionsV2{}},
+			"disabled": {Command: "server", Options: &config.OptionsV2{Disabled: true}},
 		},
 	}
 
 	report := readinessReport{}
-	readyz := healthHandler(config, func() readinessReport { return report })
+	readyz := healthHandler(conf, func() readinessReport { return report })
 	request := httptest.NewRequest(http.MethodGet, "/_readyz", nil)
 
 	get := func() (int, string) {
@@ -145,7 +146,7 @@ func TestHealthHandlerReadiness(t *testing.T) {
 
 	// Liveness never blocks on client health.
 	recorder := httptest.NewRecorder()
-	healthHandler(config, nil)(recorder, httptest.NewRequest(http.MethodGet, "/_healthz", nil))
+	healthHandler(conf, nil)(recorder, httptest.NewRequest(http.MethodGet, "/_healthz", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("healthz status = %d, want %d", recorder.Code, http.StatusOK)
 	}
@@ -160,21 +161,21 @@ func TestStartHTTPServerReturnsListenError(t *testing.T) {
 	}
 	defer func() { _ = listener.Close() }()
 
-	config := &Config{
-		McpProxy: &MCPProxyConfigV2{
+	conf := &config.Config{
+		McpProxy: &config.MCPProxyConfigV2{
 			BaseURL: "http://" + listener.Addr().String(),
 			Addr:    listener.Addr().String(),
 			Name:    "test",
 			Version: "test",
-			Type:    MCPServerTypeStreamable,
-			Options: &OptionsV2{},
+			Type:    config.MCPServerTypeStreamable,
+			Options: &config.OptionsV2{},
 		},
-		McpServers: map[string]*MCPClientConfigV2{},
+		McpServers: map[string]*config.MCPClientConfigV2{},
 	}
 
-	err = startHTTPServer(config)
+	err = StartHTTPServer(conf)
 	if err == nil || !strings.Contains(err.Error(), "HTTP server failed") {
-		t.Fatalf("startHTTPServer error = %v, want listen failure", err)
+		t.Fatalf("StartHTTPServer error = %v, want listen failure", err)
 	}
 }
 

@@ -1,9 +1,10 @@
-package main
+package client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"maps"
 	"os"
@@ -31,7 +32,7 @@ type doctorResult struct {
 	live      string
 }
 
-// runDoctor loads the config and reports, for every configured MCP server,
+// RunDoctor loads the config and reports, for every configured MCP server,
 // its transport, its authentication mechanism, and whether its credentials
 // are currently valid. Backs both the -auth-status and -doctor flags.
 //
@@ -46,23 +47,23 @@ type doctorResult struct {
 //
 // Returns whether every server checked out OK, so main can set a non-zero
 // exit code for scripting.
-func runDoctor(configPath string, insecure, expandEnv bool, httpHeaders string, httpTimeout int, live bool) (bool, error) {
-	config, err := load(configPath, insecure, expandEnv, httpHeaders, httpTimeout)
+func RunDoctor(configPath string, insecure, expandEnv bool, httpHeaders string, httpTimeout int, live bool) (bool, error) {
+	conf, err := config.Load(configPath, insecure, expandEnv, httpHeaders, httpTimeout)
 	if err != nil {
 		return false, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	names := slices.Sorted(maps.Keys(config.McpServers))
+	names := slices.Sorted(maps.Keys(conf.McpServers))
 
 	results := make([]doctorResult, len(names))
 	for i, name := range names {
-		results[i] = checkServerAuth(name, config.McpServers[name])
+		results[i] = checkServerAuth(name, conf.McpServers[name])
 	}
 
 	if live {
 		var wg sync.WaitGroup
 		for i, name := range names {
-			clientConfig := config.McpServers[name]
+			clientConfig := conf.McpServers[name]
 			if clientConfig == nil || results[i].transport == "stdio" || (clientConfig.Options != nil && clientConfig.Options.Disabled) {
 				continue
 			}
@@ -77,7 +78,7 @@ func runDoctor(configPath string, insecure, expandEnv bool, httpHeaders string, 
 
 	allOK := true
 	for i, name := range names {
-		if clientConfig := config.McpServers[name]; clientConfig != nil && clientConfig.Options != nil && clientConfig.Options.Disabled {
+		if clientConfig := conf.McpServers[name]; clientConfig != nil && clientConfig.Options != nil && clientConfig.Options.Disabled {
 			results[i].status = "disabled (skipped)"
 			results[i].ok = true
 		}
@@ -92,9 +93,9 @@ func runDoctor(configPath string, insecure, expandEnv bool, httpHeaders string, 
 
 // checkServerAuth classifies a server's transport and auth mechanism and
 // performs the local (no-network) validity check appropriate to it.
-func checkServerAuth(name string, conf *MCPClientConfigV2) doctorResult {
+func checkServerAuth(name string, conf *config.MCPClientConfigV2) doctorResult {
 	res := doctorResult{name: name}
-	clientInfo, err := parseMCPClientConfigV2(conf)
+	clientInfo, err := config.ParseMCPClientConfigV2(conf)
 	if err != nil {
 		res.transport, res.auth = "?", "?"
 		res.status = fmt.Sprintf("invalid config: %v", err)
@@ -102,15 +103,15 @@ func checkServerAuth(name string, conf *MCPClientConfigV2) doctorResult {
 	}
 
 	switch v := clientInfo.(type) {
-	case *StdioMCPClientConfig:
+	case *config.StdioMCPClientConfig:
 		res.transport = "stdio"
 		res.auth = "none"
 		res.ok = true
 		res.status = "ok (local process, no auth)"
-	case *SSEMCPClientConfig:
+	case *config.SSEMCPClientConfig:
 		res.transport = "sse"
 		checkRemoteAuth(&res, name, v.OAuth, v.Headers)
-	case *StreamableMCPClientConfig:
+	case *config.StreamableMCPClientConfig:
 		res.transport = "streamable-http"
 		checkRemoteAuth(&res, name, v.OAuth, v.Headers)
 	default:
@@ -120,7 +121,7 @@ func checkServerAuth(name string, conf *MCPClientConfigV2) doctorResult {
 	return res
 }
 
-func checkRemoteAuth(res *doctorResult, name string, oauthConf *OAuthClientConfig, headers map[string]string) {
+func checkRemoteAuth(res *doctorResult, name string, oauthConf *config.OAuthClientConfig, headers map[string]string) {
 	if oauthConf != nil {
 		res.auth = "oauth"
 		checkOAuthToken(res, name)
@@ -208,11 +209,11 @@ func checkOAuthToken(res *doctorResult, name string) {
 // checkServerLive attempts an actual Start+Initialize against the remote
 // server, without ever falling back to interactive (browser-based)
 // authorization - it only reports whether one would be needed.
-func checkServerLive(res *doctorResult, conf *MCPClientConfigV2) {
+func checkServerLive(res *doctorResult, conf *config.MCPClientConfigV2) {
 	mcpClient, err := newMCPClient(res.name, conf)
 	if err != nil {
 		res.ok = false
-		res.live = fmt.Sprintf("FAILED: %v", redactURLCredentials(err))
+		res.live = fmt.Sprintf("FAILED: %v", config.RedactURLCredentials(err))
 		return
 	}
 	defer func() { _ = mcpClient.Close() }()
@@ -248,7 +249,7 @@ func liveFailureMessage(name string, err error) string {
 	// A transport failure embeds the downstream URL, which may carry a
 	// credential in its query; the LIVE column is printed (and often pasted
 	// into a report), so redact it like the daemon log does.
-	return fmt.Sprintf("FAILED: %v", redactURLCredentials(err))
+	return fmt.Sprintf("FAILED: %v", config.RedactURLCredentials(err))
 }
 
 func printDoctorReport(results []doctorResult, live bool) {

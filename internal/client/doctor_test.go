@@ -1,8 +1,9 @@
-package main
+package client
 
 import (
 	"context"
 	"encoding/json"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +18,7 @@ import (
 func TestCheckServerAuthStdio(t *testing.T) {
 	t.Parallel()
 
-	res := checkServerAuth("tmux", &MCPClientConfigV2{Command: "/bin/true"})
+	res := checkServerAuth("tmux", &config.MCPClientConfigV2{Command: "/bin/true"})
 	if res.transport != "stdio" || res.auth != "none" || !res.ok {
 		t.Fatalf("stdio result = %+v", res)
 	}
@@ -26,7 +27,7 @@ func TestCheckServerAuthStdio(t *testing.T) {
 func TestCheckServerAuthStaticHeader(t *testing.T) {
 	t.Parallel()
 
-	res := checkServerAuth("linear", &MCPClientConfigV2{
+	res := checkServerAuth("linear", &config.MCPClientConfigV2{
 		URL:     "https://mcp.example.com/mcp",
 		Headers: map[string]string{"Authorization": "Bearer "},
 	})
@@ -34,7 +35,7 @@ func TestCheckServerAuthStaticHeader(t *testing.T) {
 		t.Fatalf("empty header should be flagged missing, got %+v", res)
 	}
 
-	res = checkServerAuth("linear", &MCPClientConfigV2{
+	res = checkServerAuth("linear", &config.MCPClientConfigV2{
 		URL:     "https://mcp.example.com/mcp",
 		Headers: map[string]string{"Authorization": "Bearer sk-live-123"},
 	})
@@ -46,7 +47,7 @@ func TestCheckServerAuthStaticHeader(t *testing.T) {
 func TestCheckServerAuthNoAuth(t *testing.T) {
 	t.Parallel()
 
-	res := checkServerAuth("public", &MCPClientConfigV2{URL: "https://mcp.example.com/mcp"})
+	res := checkServerAuth("public", &config.MCPClientConfigV2{URL: "https://mcp.example.com/mcp"})
 	if res.auth != "none" || !res.ok {
 		t.Fatalf("no-auth server result = %+v", res)
 	}
@@ -55,9 +56,9 @@ func TestCheckServerAuthNoAuth(t *testing.T) {
 func TestCheckServerAuthOAuth(t *testing.T) {
 	isolateUserConfigDir(t)
 
-	conf := &MCPClientConfigV2{
+	conf := &config.MCPClientConfigV2{
 		URL:   "https://mcp.example.com/mcp",
-		OAuth: &OAuthClientConfig{},
+		OAuth: &config.OAuthClientConfig{},
 	}
 
 	// No token file on disk yet.
@@ -123,9 +124,9 @@ func TestRunDoctorSkipsDisabledServers(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	ok, err := runDoctor(configPath, false, true, "", 10, false)
+	ok, err := RunDoctor(configPath, false, true, "", 10, false)
 	if err != nil {
-		t.Fatalf("runDoctor: %v", err)
+		t.Fatalf("RunDoctor: %v", err)
 	}
 	if !ok {
 		t.Fatal("a disabled server should not fail the doctor check")
@@ -161,10 +162,10 @@ func TestDoctorUpdatesAuthStatusAfterTokenRefresh(t *testing.T) {
 		}
 	}))
 	defer remote.Close()
-	conf := &MCPClientConfigV2{
-		TransportType: MCPClientTypeStreamable,
+	conf := &config.MCPClientConfigV2{
+		TransportType: config.MCPClientTypeStreamable,
 		URL:           remote.URL + "/mcp",
-		OAuth:         &OAuthClientConfig{ClientID: "test", AuthServerMetadataURL: remote.URL + "/metadata"},
+		OAuth:         &config.OAuthClientConfig{ClientID: "test", AuthServerMetadataURL: remote.URL + "/metadata"},
 	}
 	writeTestToken(t, "refreshable", &transport.Token{
 		AccessToken: "expired", RefreshToken: "refresh", ExpiresAt: time.Now().Add(-time.Hour),

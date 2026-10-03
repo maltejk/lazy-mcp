@@ -28,7 +28,7 @@ const (
 
 	// Both binaries are compiled once for the whole package; building them per
 	// test would dominate the runtime.
-	proxyPkg   = "../.."
+	proxyPkg   = "../../cmd/mcp-proxy"
 	fixturePkg = "../../testdata/stdio-server"
 
 	// The proxy's own defaults are 30s. Configs here shorten them so a test can

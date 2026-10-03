@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"crypto/tls"
@@ -100,7 +100,7 @@ type OAuthClientConfig struct {
 	AuthServerMetadataURL string `json:"authServerMetadataUrl,omitempty"`
 }
 
-const defaultOAuthRedirectURI = "http://localhost:8090/oauth/callback"
+const DefaultOAuthRedirectURI = "http://localhost:8090/oauth/callback"
 
 const (
 	// defaultPingInterval is how often a downstream connection is probed when
@@ -116,7 +116,7 @@ const (
 
 // pingInterval returns the probe period for a server, falling back to the
 // default when unset.
-func (o *OptionsV2) pingInterval() time.Duration {
+func (o *OptionsV2) EffectivePingInterval() time.Duration {
 	if o != nil && o.PingInterval > 0 {
 		return time.Duration(o.PingInterval)
 	}
@@ -125,7 +125,7 @@ func (o *OptionsV2) pingInterval() time.Duration {
 
 // startupGrace returns how long the proxy waits for stragglers before it
 // reports ready anyway, falling back to the default when unset.
-func (c *MCPProxyConfigV2) startupGrace() time.Duration {
+func (c *MCPProxyConfigV2) StartupGrace() time.Duration {
 	if c != nil && c.StartupGracePeriod > 0 {
 		return time.Duration(c.StartupGracePeriod)
 	}
@@ -134,7 +134,7 @@ func (c *MCPProxyConfigV2) startupGrace() time.Duration {
 
 // reconnectInterval returns the gap between connection attempts for a server,
 // falling back to the default when unset.
-func (o *OptionsV2) reconnectInterval() time.Duration {
+func (o *OptionsV2) EffectiveReconnectInterval() time.Duration {
 	if o != nil && o.ReconnectInterval > 0 {
 		return time.Duration(o.ReconnectInterval)
 	}
@@ -144,19 +144,19 @@ func (o *OptionsV2) reconnectInterval() time.Duration {
 // autoReconnect reports whether this server self-heals. It is nil-safe so a
 // Client built without Options (which newMCPClient permits) does not panic in
 // the ping task.
-func (o *OptionsV2) autoReconnect() bool {
+func (o *OptionsV2) EffectiveAutoReconnect() bool {
 	return o != nil && o.AutoReconnect.OrElse(false)
 }
 
 // panicIfInvalid reports whether a failed start is fatal for the process. It is
 // nil-safe for the same reason as autoReconnect.
-func (o *OptionsV2) panicIfInvalid() bool {
+func (o *OptionsV2) EffectivePanicIfInvalid() bool {
 	return o != nil && o.PanicIfInvalid.OrElse(false)
 }
 
 // logEnabled reports whether request logging is on. It is nil-safe like the two
 // above, so the route setup does not depend on Options having been defaulted.
-func (o *OptionsV2) logEnabled() bool {
+func (o *OptionsV2) EffectiveLogEnabled() bool {
 	return o != nil && o.LogEnabled.OrElse(false)
 }
 
@@ -239,7 +239,7 @@ type MCPClientConfigV2 struct {
 	Options *OptionsV2 `json:"options,omitempty"`
 }
 
-func parseMCPClientConfigV2(conf *MCPClientConfigV2) (any, error) {
+func ParseMCPClientConfigV2(conf *MCPClientConfigV2) (any, error) {
 	if conf == nil {
 		return nil, errors.New("server config is null")
 	}
@@ -328,7 +328,7 @@ func validateDuration(field string, d Duration) error {
 	return nil
 }
 
-func validateHTTPURL(field, rawURL string) error {
+func ValidateHTTPURL(field, rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		// Keep the original "is invalid" wording for compatibility, but do not
@@ -412,12 +412,12 @@ func validateServerName(name string) error {
 	return nil
 }
 
-func validateConfig(config *Config) error {
+func ValidateConfig(config *Config) error {
 	if config == nil || config.McpProxy == nil {
 		return errors.New("mcpProxy is required")
 	}
 	proxy := config.McpProxy
-	if err := validateHTTPURL("mcpProxy.baseURL", proxy.BaseURL); err != nil {
+	if err := ValidateHTTPURL("mcpProxy.baseURL", proxy.BaseURL); err != nil {
 		return err
 	}
 	if strings.TrimSpace(proxy.Addr) == "" {
@@ -447,11 +447,11 @@ func validateConfig(config *Config) error {
 		if serverConfig == nil {
 			return fmt.Errorf("%s cannot be null", field)
 		}
-		if _, err := parseMCPClientConfigV2(serverConfig); err != nil {
+		if _, err := ParseMCPClientConfigV2(serverConfig); err != nil {
 			return fmt.Errorf("%s: %w", field, err)
 		}
 		if serverConfig.URL != "" {
-			if err := validateHTTPURL(field+".url", serverConfig.URL); err != nil {
+			if err := ValidateHTTPURL(field+".url", serverConfig.URL); err != nil {
 				return err
 			}
 			// A URL-query credential is redacted from the proxy's own errors
@@ -473,13 +473,13 @@ func validateConfig(config *Config) error {
 			}
 			redirectURI := serverConfig.OAuth.RedirectURI
 			if redirectURI == "" {
-				redirectURI = defaultOAuthRedirectURI
+				redirectURI = DefaultOAuthRedirectURI
 			}
-			if _, _, err := parseRedirectURI(redirectURI); err != nil {
+			if _, _, err := ParseRedirectURI(redirectURI); err != nil {
 				return fmt.Errorf("%s.oauth.redirectUri: %w", field, err)
 			}
 			if metadataURL := serverConfig.OAuth.AuthServerMetadataURL; metadataURL != "" {
-				if err := validateHTTPURL(field+".oauth.authServerMetadataUrl", metadataURL); err != nil {
+				if err := ValidateHTTPURL(field+".oauth.authServerMetadataUrl", metadataURL); err != nil {
 					return err
 				}
 			}
@@ -561,7 +561,7 @@ func newConfProvider(path string, insecure, expandEnv bool, httpHeaders string, 
 	return nil, errors.New("unsupported config path")
 }
 
-func load(path string, insecure, expandEnv bool, httpHeaders string, httpTimeout int) (*Config, error) {
+func Load(path string, insecure, expandEnv bool, httpHeaders string, httpTimeout int) (*Config, error) {
 	pro, err := newConfProvider(path, insecure, expandEnv, httpHeaders, httpTimeout)
 	if err != nil {
 		return nil, err
@@ -615,7 +615,7 @@ func load(path string, insecure, expandEnv bool, httpHeaders string, httpTimeout
 		McpProxy:   conf.McpProxy,
 		McpServers: conf.McpServers,
 	}
-	if err := validateConfig(config); err != nil {
+	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
 	return config, nil

@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/client"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"os"
 )
@@ -10,7 +12,7 @@ import (
 var BuildVersion = "dev"
 
 func main() {
-	conf := flag.String("config", "config.json", "path to config file or a http(s) url")
+	confPath := flag.String("config", "config.json", "path to config file or a http(s) url")
 	insecure := flag.Bool("insecure", false, "allow insecure HTTPS connections by skipping TLS certificate verification")
 	expandEnv := flag.Bool("expand-env", true, "expand environment variables in config file")
 	httpHeaders := flag.String("http-headers", "", "optional HTTP headers for config URL, format: 'Key1:Value1;Key2:Value2'")
@@ -33,18 +35,19 @@ func main() {
 		fmt.Println(BuildVersion)
 		return
 	}
+	client.BuildVersion = BuildVersion
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	if *authorize != "" {
-		if err := runAuthorize(*conf, *authorize, *insecure, *expandEnv, *httpHeaders, *httpTimeout); err != nil {
-			slog.Error("Failed to authorize server", "server", *authorize, "err", redactURLCredentials(err))
+		if err := client.RunAuthorize(*confPath, *authorize, *insecure, *expandEnv, *httpHeaders, *httpTimeout); err != nil {
+			slog.Error("Failed to authorize server", "server", *authorize, "err", config.RedactURLCredentials(err))
 			os.Exit(1)
 		}
 		return
 	}
 	if *authStatus || *doctor {
-		ok, err := runDoctor(*conf, *insecure, *expandEnv, *httpHeaders, *httpTimeout, *doctor)
+		ok, err := client.RunDoctor(*confPath, *insecure, *expandEnv, *httpHeaders, *httpTimeout, *doctor)
 		if err != nil {
-			slog.Error("Failed to run doctor", "err", redactURLCredentials(err))
+			slog.Error("Failed to run doctor", "err", config.RedactURLCredentials(err))
 			os.Exit(1)
 		}
 		if !ok {
@@ -52,18 +55,18 @@ func main() {
 		}
 		return
 	}
-	config, err := load(*conf, *insecure, *expandEnv, *httpHeaders, *httpTimeout)
+	conf, err := config.Load(*confPath, *insecure, *expandEnv, *httpHeaders, *httpTimeout)
 	if err != nil {
-		slog.Error("Failed to load config", "err", redactURLCredentials(err))
+		slog.Error("Failed to load config", "err", config.RedactURLCredentials(err))
 		os.Exit(1)
 	}
 	if *checkConfig {
-		fmt.Printf("Config OK: %d MCP server(s) configured\n", len(config.McpServers))
+		fmt.Printf("Config OK: %d MCP server(s) configured\n", len(conf.McpServers))
 		return
 	}
-	err = startHTTPServer(config)
+	err = client.StartHTTPServer(conf)
 	if err != nil {
-		slog.Error("Failed to start server", "err", redactURLCredentials(err))
+		slog.Error("Failed to start server", "err", config.RedactURLCredentials(err))
 		os.Exit(1)
 	}
 }

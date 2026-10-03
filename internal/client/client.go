@@ -1,13 +1,13 @@
-package main
+package client
 
 import (
 	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"runtime/debug"
 	"strings"
@@ -36,11 +36,15 @@ const (
 	healthFailed
 )
 
+// BuildVersion is reported to downstream servers during OAuth/doctor handshakes.
+// main sets it from its ldflags-injected value.
+var BuildVersion = "dev"
+
 type Client struct {
 	name            string
 	needPing        bool
 	needManualStart bool
-	options         *OptionsV2
+	options         *config.OptionsV2
 	health          atomic.Int32
 	// requestTimeout bounds one forwarded request. It is only set for stdio
 	// downstreams: the sse and streamable-http clients carry their timeout
@@ -95,7 +99,7 @@ func mcpHTTPHeaders(headers map[string]string) map[string]string {
 
 // sseClientOptions and streamableClientOptions keep the plain and OAuth
 // variants of each transport configured identically.
-func sseClientOptions(conf *SSEMCPClientConfig) []transport.ClientOption {
+func sseClientOptions(conf *config.SSEMCPClientConfig) []transport.ClientOption {
 	options := []transport.ClientOption{client.WithHeaders(mcpHTTPHeaders(conf.Headers))}
 	if conf.Timeout > 0 {
 		options = append(options, transport.WithResponseTimeout(time.Duration(conf.Timeout)))
@@ -103,7 +107,7 @@ func sseClientOptions(conf *SSEMCPClientConfig) []transport.ClientOption {
 	return options
 }
 
-func streamableClientOptions(conf *StreamableMCPClientConfig) []transport.StreamableHTTPCOption {
+func streamableClientOptions(conf *config.StreamableMCPClientConfig) []transport.StreamableHTTPCOption {
 	options := []transport.StreamableHTTPCOption{transport.WithHTTPHeaders(mcpHTTPHeaders(conf.Headers))}
 	if conf.Timeout > 0 {
 		options = append(options, transport.WithHTTPTimeout(time.Duration(conf.Timeout)))
@@ -111,8 +115,8 @@ func streamableClientOptions(conf *StreamableMCPClientConfig) []transport.Stream
 	return options
 }
 
-func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
-	clientInfo, pErr := parseMCPClientConfigV2(conf)
+func newMCPClient(name string, conf *config.MCPClientConfigV2) (*Client, error) {
+	clientInfo, pErr := config.ParseMCPClientConfigV2(conf)
 	if pErr != nil {
 		return nil, pErr
 	}
@@ -122,12 +126,12 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 		clientConf: clientInfo,
 	}
 	switch v := clientInfo.(type) {
-	case *StdioMCPClientConfig:
+	case *config.StdioMCPClientConfig:
 		// Stdio servers are pinged too: a crashed subprocess is the most
 		// common way a downstream disappears at runtime.
 		c.needPing = true
 		c.requestTimeout = time.Duration(v.Timeout)
-	case *SSEMCPClientConfig, *StreamableMCPClientConfig:
+	case *config.SSEMCPClientConfig, *config.StreamableMCPClientConfig:
 		c.needPing = true
 		c.needManualStart = true
 	}
@@ -147,7 +151,7 @@ func newMCPClient(name string, conf *MCPClientConfigV2) (*Client, error) {
 // reused.
 func (c *Client) buildRawClient() (*client.Client, error) {
 	switch v := c.clientConf.(type) {
-	case *StdioMCPClientConfig:
+	case *config.StdioMCPClientConfig:
 		envs := make([]string, 0, len(v.Env))
 		for kk, vv := range v.Env {
 			envs = append(envs, fmt.Sprintf("%s=%s", kk, vv))
@@ -158,7 +162,7 @@ func (c *Client) buildRawClient() (*client.Client, error) {
 		}
 		drainStderr(c.name, raw)
 		return raw, nil
-	case *SSEMCPClientConfig:
+	case *config.SSEMCPClientConfig:
 		options := sseClientOptions(v)
 		if v.OAuth != nil {
 			oc, err := buildOAuthConfig(c.name, v.OAuth)
@@ -168,7 +172,7 @@ func (c *Client) buildRawClient() (*client.Client, error) {
 			return client.NewOAuthSSEClient(v.URL, oc, options...)
 		}
 		return client.NewSSEMCPClient(v.URL, options...)
-	case *StreamableMCPClientConfig:
+	case *config.StreamableMCPClientConfig:
 		options := streamableClientOptions(v)
 		if v.OAuth != nil {
 			oc, err := buildOAuthConfig(c.name, v.OAuth)
@@ -358,85 +362,6 @@ func (c *Client) withRequestTimeout(ctx context.Context) (context.Context, conte
 	return context.WithTimeout(ctx, c.requestTimeout)
 }
 
-// redactedError keeps the original error reachable through Unwrap while
-// exposing a message with URL secrets removed.
-type redactedError struct {
-	msg string
-	err error
-}
-
-func (e *redactedError) Error() string { return e.msg }
-func (e *redactedError) Unwrap() error { return e.err }
-
-// redactedURLPlaceholder stands in for a URL that could not be parsed. Raw
-// text cannot be redacted reliably in that case: net/url hands back a string
-// truncated at the first '#' (so a credential can look like the host or a
-// port), and there is no way to tell a port from a truncated password. The
-// only safe option is to not echo the input at all.
-const redactedURLPlaceholder = "<redacted-url>"
-
-// redactURLString returns a display form of raw with userinfo, query, and
-// fragment removed. A string that does not parse as a URL is replaced entirely
-// by redactedURLPlaceholder, because no part of it can be trusted.
-func redactURLString(raw string) string {
-	if raw == "" {
-		return raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return redactedURLPlaceholder
-	}
-	u.User = nil
-	u.RawQuery = ""
-	u.Fragment = ""
-	u.RawFragment = ""
-	return u.String()
-}
-
-// redactURLCredentials removes userinfo, query, and fragment values from any
-// *url.Error in the chain. A downstream credential may be configured in the
-// URL query (docs/CONFIGURATION.md documents that form), and Go's url.Error
-// embeds the whole URL in its message while redacting only the userinfo
-// password - so without this the proxy's own downstream secret would reach
-// callers through a JSON-RPC error and the daemon log. errors.As still finds
-// the wrapped transport.Error, so failure classification is unaffected.
-func redactURLCredentials(err error) error {
-	if err == nil {
-		return nil
-	}
-	var urlErr *url.Error
-	if !errors.As(err, &urlErr) {
-		return err
-	}
-	if urlErr.Err == nil {
-		return err
-	}
-	safe := redactURLString(urlErr.URL)
-	if safe == urlErr.URL {
-		// Nothing to redact (no userinfo, query, or fragment).
-		return err
-	}
-	if safe == redactedURLPlaceholder {
-		// The URL did not parse. Its raw text can also have contaminated the
-		// reason - net/url reports a truncated credential as a port - so drop
-		// the reason as well rather than half-redact the message.
-		return &redactedError{msg: fmt.Sprintf("%s %s", urlErr.Op, redactedURLPlaceholder), err: err}
-	}
-	// Replace the RENDERED form of the url.Error, not the raw URL: url.Error
-	// renders its URL with %q, so a credential containing a quote or backslash
-	// does not appear verbatim in the message and a raw-URL replacement would
-	// silently leave it in place.
-	rawRendered := (&url.Error{Op: urlErr.Op, URL: urlErr.URL, Err: urlErr.Err}).Error()
-	redactedRendered := (&url.Error{Op: urlErr.Op, URL: safe, Err: urlErr.Err}).Error()
-	message := strings.ReplaceAll(err.Error(), rawRendered, redactedRendered)
-	if message == err.Error() {
-		// The wrapper did not render the url.Error verbatim; fall back to the
-		// raw URL, which covers the remaining shapes.
-		message = strings.ReplaceAll(err.Error(), urlErr.URL, safe)
-	}
-	return &redactedError{msg: message, err: err}
-}
-
 // callTool forwards a tool call to the downstream, bounded by requestTimeout
 // when one is configured.
 //
@@ -456,7 +381,7 @@ func (c *Client) callTool(ctx context.Context, request mcp.CallToolRequest) (*mc
 	callCtx, cancel := c.withRequestTimeout(ctx)
 	defer cancel()
 	result, err := cl.CallTool(callCtx, request)
-	return result, redactURLCredentials(err)
+	return result, config.RedactURLCredentials(err)
 }
 
 // drainStderr keeps reading a stdio subprocess's stderr for as long as it runs.
@@ -547,10 +472,10 @@ func isTransportFailure(err error) bool {
 }
 
 func (c *Client) startPingTask(ctx context.Context) {
-	ticker := time.NewTicker(c.options.pingInterval())
+	ticker := time.NewTicker(c.options.EffectivePingInterval())
 	defer ticker.Stop()
 
-	autoReconnect := c.options.autoReconnect()
+	autoReconnect := c.options.EffectiveAutoReconnect()
 	failCount := 0
 	for {
 		select {
@@ -576,7 +501,7 @@ func (c *Client) startPingTask(ctx context.Context) {
 				// A downstream that answers with a JSON-RPC error is alive - it
 				// may simply not implement the probe. Only a broken connection
 				// counts against it.
-				slog.Debug("MCP health probe answered with an error, treating as alive", "client", c.name, "err", redactURLCredentials(err))
+				slog.Debug("MCP health probe answered with an error, treating as alive", "client", c.name, "err", config.RedactURLCredentials(err))
 				if failCount > 0 {
 					slog.Info("MCP health probe recovered", "client", c.name, "failures", failCount)
 					failCount = 0
@@ -586,7 +511,7 @@ func (c *Client) startPingTask(ctx context.Context) {
 			}
 
 			failCount++
-			slog.Warn("MCP health probe failed", "client", c.name, "err", redactURLCredentials(err), "failures", failCount)
+			slog.Warn("MCP health probe failed", "client", c.name, "err", config.RedactURLCredentials(err), "failures", failCount)
 			if failCount < pingFailureThreshold {
 				continue
 			}
@@ -600,7 +525,7 @@ func (c *Client) startPingTask(ctx context.Context) {
 			// using the old one until the new one is ready.
 			rErr := c.reconnect(ctx)
 			if rErr != nil {
-				slog.Warn("Failed to reconnect downstream", "client", c.name, "err", redactURLCredentials(rErr))
+				slog.Warn("Failed to reconnect downstream", "client", c.name, "err", config.RedactURLCredentials(rErr))
 				continue
 			}
 			slog.Info("Reconnected downstream", "client", c.name, "afterFailures", failCount)
@@ -617,7 +542,7 @@ func (c *Client) startPingTask(ctx context.Context) {
 // has a non-empty list (so an empty list means "no filtering", including
 // mode=allow), and an unrecognized mode skips filtering. Both cases log a
 // warning so an inert or over-broad filter is not silent.
-func toolFilterFunc(name string, options *OptionsV2) func(string) bool {
+func toolFilterFunc(name string, options *config.OptionsV2) func(string) bool {
 	if options == nil || options.ToolFilter == nil {
 		return func(string) bool { return true }
 	}
@@ -625,8 +550,8 @@ func toolFilterFunc(name string, options *OptionsV2) func(string) bool {
 	for _, toolName := range options.ToolFilter.List {
 		filterSet[toolName] = struct{}{}
 	}
-	switch mode := ToolFilterMode(strings.ToLower(string(options.ToolFilter.Mode))); mode {
-	case ToolFilterModeAllow:
+	switch mode := config.ToolFilterMode(strings.ToLower(string(options.ToolFilter.Mode))); mode {
+	case config.ToolFilterModeAllow:
 		if len(filterSet) == 0 {
 			slog.Warn("toolFilter mode=allow with an empty list exposes every tool; list the tools to expose, or use mode=block",
 				"client", name)
@@ -639,7 +564,7 @@ func toolFilterFunc(name string, options *OptionsV2) func(string) bool {
 			}
 			return inList
 		}
-	case ToolFilterModeBlock:
+	case config.ToolFilterModeBlock:
 		return func(toolName string) bool {
 			_, inList := filterSet[toolName]
 			if inList {
@@ -648,7 +573,7 @@ func toolFilterFunc(name string, options *OptionsV2) func(string) bool {
 			return !inList
 		}
 	default:
-		// validateConfig rejects unknown modes, so this only happens for a
+		// config.ValidateConfig rejects unknown modes, so this only happens for a
 		// programmatically built config. Preserve the historical behavior (no
 		// filtering) but make it visible.
 		slog.Warn("Unknown tool filter mode, skipping tool filter", "client", name, "mode", mode)
@@ -750,7 +675,7 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 				callCtx, cancel := c.withRequestTimeout(ctx)
 				defer cancel()
 				result, err := live.GetPrompt(callCtx, request)
-				return result, redactURLCredentials(err)
+				return result, config.RedactURLCredentials(err)
 			}})
 		}
 		if listed.NextCursor == "" {
@@ -854,7 +779,7 @@ func (c *Client) readResource(ctx context.Context, request mcp.ReadResourceReque
 	defer cancel()
 	readResource, err := cl.ReadResource(callCtx, request)
 	if err != nil {
-		return nil, redactURLCredentials(err)
+		return nil, config.RedactURLCredentials(err)
 	}
 	return readResource.Contents, nil
 }
@@ -883,7 +808,7 @@ type Server struct {
 	handler   http.Handler
 }
 
-func newMCPServer(name string, serverConfig *MCPProxyConfigV2, clientConfig *MCPClientConfigV2) (*Server, error) {
+func newMCPServer(name string, serverConfig *config.MCPProxyConfigV2, clientConfig *config.MCPClientConfigV2) (*Server, error) {
 	if serverConfig == nil {
 		return nil, errors.New("server config is required")
 	}
@@ -892,7 +817,7 @@ func newMCPServer(name string, serverConfig *MCPProxyConfigV2, clientConfig *MCP
 	}
 	clientOptions := clientConfig.Options
 	if clientOptions == nil {
-		clientOptions = &OptionsV2{}
+		clientOptions = &config.OptionsV2{}
 	}
 	serverOpts := []server.ServerOption{
 		server.WithResourceCapabilities(true, true),
@@ -911,13 +836,13 @@ func newMCPServer(name string, serverConfig *MCPProxyConfigV2, clientConfig *MCP
 	var handler http.Handler
 
 	switch serverConfig.Type {
-	case MCPServerTypeSSE:
+	case config.MCPServerTypeSSE:
 		handler = server.NewSSEServer(
 			mcpServer,
 			server.WithStaticBasePath(name),
 			server.WithBaseURL(serverConfig.BaseURL),
 		)
-	case MCPServerTypeStreamable:
+	case config.MCPServerTypeStreamable:
 		handler = server.NewStreamableHTTPServer(
 			mcpServer,
 			server.WithStateLess(true),
