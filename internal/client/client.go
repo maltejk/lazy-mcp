@@ -1,13 +1,13 @@
 package client
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/voicetreelab/lazy-mcp/internal/config"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime/debug"
 	"strings"
@@ -19,6 +19,7 @@ import (
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/voicetreelab/lazy-mcp/internal/config"
 )
 
 // clientHealth is the last known state of a downstream connection.
@@ -60,20 +61,31 @@ type Client struct {
 	// getClient at request time, so reconnecting can swap it under them.
 	mu     sync.RWMutex
 	client *client.Client
+	// cmd is the stdio subprocess behind client, captured at spawn time so
+	// Kill can force-terminate it: mcp-go's stdio Close only closes stdin and
+	// then blocks on cmd.Wait(), never sending a signal. Guarded by mu.
+	cmd *exec.Cmd
+	// stderr watches the stdio subprocess behind client. Guarded by mu.
+	stderr *stderrWatcher
 
 	// connectMu serializes connect attempts: the startup retry loop and the
 	// ping-driven reconnect must never build a transport at the same time.
 	connectMu sync.Mutex
 	// hasConnected is false until the first connect succeeds. Until then the
-	// transport built in newMCPClient is reused (stdio spawns its subprocess
+	// transport built in NewMCPClient is reused (stdio spawns its subprocess
 	// there); afterwards every attempt rebuilds, so a dead one is never reused.
 	hasConnected bool
 	closed       atomic.Bool
 
-	// remembered from the last addToMCPServer so the ping task can reconnect.
+	// remembered from the last AddToMCPServer so the ping task can reconnect.
 	clientInfo mcp.Implementation
 	mcpServer  *server.MCPServer
 	pingOnce   sync.Once
+
+	// activateMu serializes activation of a lazy-loaded downstream, and
+	// activated records that its real catalog is now mounted.
+	activateMu sync.Mutex
+	activated  atomic.Bool
 }
 
 func (c *Client) Health() clientHealth {
@@ -115,7 +127,7 @@ func streamableClientOptions(conf *config.StreamableMCPClientConfig) []transport
 	return options
 }
 
-func newMCPClient(name string, conf *config.MCPClientConfigV2) (*Client, error) {
+func NewMCPClient(name string, conf *config.MCPClientConfigV2) (*Client, error) {
 	clientInfo, pErr := config.ParseMCPClientConfigV2(conf)
 	if pErr != nil {
 		return nil, pErr
@@ -156,11 +168,25 @@ func (c *Client) buildRawClient() (*client.Client, error) {
 		for kk, vv := range v.Env {
 			envs = append(envs, fmt.Sprintf("%s=%s", kk, vv))
 		}
-		raw, err := client.NewStdioMCPClient(v.Command, envs, v.Args...)
+		raw, err := client.NewStdioMCPClientWithOptions(v.Command, envs, v.Args,
+			transport.WithCommandFunc(func(ctx context.Context, command string, env []string, args []string) (*exec.Cmd, error) {
+				// Mirrors mcp-go's default spawn (exec.CommandContext plus the
+				// merged environment), but remembers the process for Kill.
+				cmd := exec.CommandContext(ctx, command, args...)
+				cmd.Env = append(os.Environ(), env...)
+				c.mu.Lock()
+				c.cmd = cmd
+				c.mu.Unlock()
+				return cmd, nil
+			}),
+		)
 		if err != nil {
 			return nil, err
 		}
-		drainStderr(c.name, raw)
+		watcher := drainStderr(c.name, raw)
+		c.mu.Lock()
+		c.stderr = watcher
+		c.mu.Unlock()
 		return raw, nil
 	case *config.SSEMCPClientConfig:
 		options := sseClientOptions(v)
@@ -219,6 +245,10 @@ func (c *Client) connect(ctx context.Context, clientInfo mcp.Implementation, mcp
 		}
 	}
 
+	c.mu.RLock()
+	watcher := c.stderr
+	c.mu.RUnlock()
+
 	connected := false
 	// Until the swap below succeeds, this transport is not owned by the client
 	// and must be closed on the way out.
@@ -235,7 +265,7 @@ func (c *Client) connect(ctx context.Context, clientInfo mcp.Implementation, mcp
 	if c.needManualStart {
 		if err := raw.Start(ctx); err != nil {
 			c.forget(raw)
-			return oauthAwareError(c.name, err)
+			return oauthAwareError(c.name, watcher.explain(c.name, err))
 		}
 	}
 
@@ -243,8 +273,21 @@ func (c *Client) connect(ctx context.Context, clientInfo mcp.Implementation, mcp
 	// accepts the connection and then goes silent must not wedge a retry loop
 	// forever. Tool/prompt/resource listing below uses the caller's context,
 	// since a large catalog can legitimately take longer than a handshake.
-	initCtx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
+	initCtx, cancelTimeout := context.WithTimeout(ctx, connectTimeout)
+	defer cancelTimeout()
+	// A stdio downstream that exits during startup closes its stderr. Stop
+	// waiting for the handshake then, instead of sitting out connectTimeout.
+	initCtx, cancelInit := context.WithCancelCause(initCtx)
+	defer cancelInit(nil)
+	if watcher != nil {
+		go func() {
+			select {
+			case <-watcher.exited:
+				cancelInit(watcher.exitError(c.name))
+			case <-initCtx.Done():
+			}
+		}()
+	}
 
 	initRequest := mcp.InitializeRequest{}
 	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
@@ -256,7 +299,7 @@ func (c *Client) connect(ctx context.Context, clientInfo mcp.Implementation, mcp
 	}
 	if _, err := raw.Initialize(initCtx, initRequest); err != nil {
 		c.forget(raw)
-		return oauthAwareError(c.name, err)
+		return oauthAwareError(c.name, watcher.explain(c.name, err))
 	}
 
 	c.mu.Lock()
@@ -279,12 +322,31 @@ func (c *Client) connect(ctx context.Context, clientInfo mcp.Implementation, mcp
 	}
 	slog.Info("Successfully initialized MCP client", "client", c.name)
 
+	// A caller that mounts no catalog (the hierarchy router lists and calls
+	// tools itself) is done once the handshake succeeded.
+	if mcpServer == nil {
+		c.health.Store(int32(healthOK))
+		return nil
+	}
+
 	// Bound the catalog discovery so a downstream that answers initialize and
 	// then goes silent cannot wedge this attempt (and the retry loop with it).
 	// The transports use this ctx per request, so it does not tear down the
 	// connection the way bounding Start would.
 	catalogCtx, cancelCatalog := context.WithTimeout(ctx, catalogTimeout)
 	defer cancelCatalog()
+
+	// A lazy-loaded downstream mounts only an activation meta-tool until it is
+	// called; once activated, a reconnect re-mounts the real catalog.
+	if c.lazyLoadPending() {
+		if err := c.registerCatalogSafely(func() error {
+			return c.registerMetaTool(catalogCtx, mcpServer)
+		}); err != nil {
+			return err
+		}
+		c.health.Store(int32(healthOK))
+		return nil
+	}
 
 	// Catalog registration copies descriptors that a downstream controls, so it
 	// runs through the panic-guarded helper below: a future shape this code does
@@ -330,7 +392,7 @@ func (c *Client) forget(raw *client.Client) {
 	c.mu.Unlock()
 }
 
-func (c *Client) addToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
+func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
 	c.clientInfo = clientInfo
 	c.mcpServer = mcpServer
 
@@ -382,35 +444,6 @@ func (c *Client) callTool(ctx context.Context, request mcp.CallToolRequest) (*mc
 	defer cancel()
 	result, err := cl.CallTool(callCtx, request)
 	return result, config.RedactURLCredentials(err)
-}
-
-// drainStderr keeps reading a stdio subprocess's stderr for as long as it runs.
-//
-// Start() hands the subprocess a StderrPipe that nothing consumes: mcp-go only
-// exposes it through Stderr(). An OS pipe holds roughly 64KB, so a downstream
-// that logs to stderr — most of them do — works until that buffer fills and then
-// blocks inside write(2) forever. Nothing reports an error, because from here
-// the server has simply gone silent: one stdio channel carries every request, so
-// the keepalive ping stops being answered too and the client is marked unhealthy
-// for every caller until the proxy restarts.
-//
-// The lines are logged rather than discarded, since a downstream's stderr is
-// usually where it explains why it is unhappy.
-func drainStderr(name string, mcpClient *client.Client) {
-	stderr, ok := client.GetStderr(mcpClient)
-	if !ok || stderr == nil {
-		return
-	}
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		// Downstream servers can emit long single lines (a Python traceback
-		// frame, a serialized payload); the default 64KB token limit would turn
-		// one into a scan error and stop the drain.
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			slog.Debug("Downstream stderr", "client", name, "line", scanner.Text())
-		}
-	}()
 }
 
 // pingTimeout bounds a single probe, so a downstream that accepts the request
@@ -611,7 +644,7 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 				continue
 			}
 			slog.Debug("Adding tool", "client", c.name, "tool", tool.Name)
-			// The proxy implements no tasks/* handling (newMCPServer never
+			// The proxy implements no tasks/* handling (NewMCPServer never
 			// enables task capabilities), so a peer-declared execution mode must
 			// not select a dispatcher path the route server cannot honour: it
 			// would let a plain tools/call be refused, or be accepted as a task
@@ -784,6 +817,252 @@ func (c *Client) readResource(ctx context.Context, request mcp.ReadResourceReque
 	return readResource.Contents, nil
 }
 
+// lazyLoadPending reports whether this downstream is lazy-loaded and has not
+// been activated yet.
+func (c *Client) lazyLoadPending() bool {
+	return c.options != nil && c.options.LazyLoad.OrElse(false) && !c.activated.Load()
+}
+
+// lazySummary is what the activation meta-tool tells the caller about the
+// catalog it would mount.
+type lazySummary struct {
+	tools                                 []mcp.Tool
+	prompts, resources, resourceTemplates int
+}
+
+// summarize lists the downstream's catalog without mounting it.
+func (c *Client) summarize(ctx context.Context) (lazySummary, error) {
+	var sum lazySummary
+	cl := c.getClient()
+	if cl == nil {
+		return sum, errors.New("downstream is not connected")
+	}
+	keep := toolFilterFunc(c.name, c.options)
+	toolsRequest := mcp.ListToolsRequest{}
+	for {
+		listed, err := cl.ListTools(ctx, toolsRequest)
+		if err != nil {
+			return sum, err
+		}
+		if listed == nil {
+			break
+		}
+		for _, tool := range listed.Tools {
+			if keep(tool.Name) {
+				sum.tools = append(sum.tools, tool)
+			}
+		}
+		if listed.NextCursor == "" || len(listed.Tools) == 0 {
+			break
+		}
+		toolsRequest.Params.Cursor = listed.NextCursor
+	}
+	// Prompts and resources are optional capabilities; a downstream without
+	// them just reports zero.
+	promptsRequest := mcp.ListPromptsRequest{}
+	for {
+		listed, err := cl.ListPrompts(ctx, promptsRequest)
+		if err != nil || listed == nil {
+			break
+		}
+		sum.prompts += len(listed.Prompts)
+		if listed.NextCursor == "" || len(listed.Prompts) == 0 {
+			break
+		}
+		promptsRequest.Params.Cursor = listed.NextCursor
+	}
+	resourcesRequest := mcp.ListResourcesRequest{}
+	for {
+		listed, err := cl.ListResources(ctx, resourcesRequest)
+		if err != nil || listed == nil {
+			break
+		}
+		sum.resources += len(listed.Resources)
+		if listed.NextCursor == "" || len(listed.Resources) == 0 {
+			break
+		}
+		resourcesRequest.Params.Cursor = listed.NextCursor
+	}
+	templatesRequest := mcp.ListResourceTemplatesRequest{}
+	for {
+		listed, err := cl.ListResourceTemplates(ctx, templatesRequest)
+		if err != nil || listed == nil {
+			break
+		}
+		sum.resourceTemplates += len(listed.ResourceTemplates)
+		if listed.NextCursor == "" || len(listed.ResourceTemplates) == 0 {
+			break
+		}
+		templatesRequest.Params.Cursor = listed.NextCursor
+	}
+	return sum, nil
+}
+
+// activateTools mounts the real tools, prompts and resources of a lazy-loaded
+// downstream. It is the handler of the activate_<server> meta-tool.
+//
+// Mounting the catalog replaces the route's tool set, so the meta-tool is
+// mounted again afterwards: callers that activate defensively keep working.
+func (c *Client) activateTools(mcpServer *server.MCPServer, meta mcp.Tool) server.ToolHandlerFunc {
+	var handler server.ToolHandlerFunc
+	handler = func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		c.activateMu.Lock()
+		defer c.activateMu.Unlock()
+
+		sum, err := c.summarize(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !c.activated.Load() {
+			slog.Info("Activating lazy-loaded downstream", "client", c.name, "tools", len(sum.tools), "prompts", sum.prompts, "resources", sum.resources, "templates", sum.resourceTemplates)
+			if err := c.registerCatalogSafely(func() error {
+				return c.addToolsToServer(ctx, mcpServer)
+			}); err != nil {
+				return nil, err
+			}
+			_ = c.registerCatalogSafely(func() error {
+				_ = c.addPromptsToServer(ctx, mcpServer)
+				_ = c.addResourcesToServer(ctx, mcpServer)
+				_ = c.addResourceTemplatesToServer(ctx, mcpServer)
+				return nil
+			})
+			mcpServer.AddTool(meta, handler)
+			c.activated.Store(true)
+		}
+
+		body, err := json.Marshal(map[string]any{
+			"activated":     true,
+			"server":        c.name,
+			"toolCount":     len(sum.tools),
+			"promptCount":   sum.prompts,
+			"resourceCount": sum.resources,
+			"templateCount": sum.resourceTemplates,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent(string(body))}}, nil
+	}
+	return handler
+}
+
+// registerMetaTool mounts the single activate_<server> tool in place of the
+// downstream's catalog.
+func (c *Client) registerMetaTool(ctx context.Context, mcpServer *server.MCPServer) error {
+	sum, err := c.summarize(ctx)
+	if err != nil {
+		return err
+	}
+	metaToolName := fmt.Sprintf("activate_%s", c.name)
+
+	var description string
+	switch c.name {
+	case "serena":
+		description = "Activate Serena MCP server. Provides semantic code operations, symbol finding, file editing, and code analysis tools. "
+	case "playwright":
+		description = "Activate Playwright MCP server. Provides browser automation, web scraping, screenshots, and web interaction tools. "
+	default:
+		description = fmt.Sprintf("Activate and load all tools from the %s MCP server. ", c.name)
+	}
+	description += fmt.Sprintf("This will load %d tools", len(sum.tools))
+	if sum.prompts > 0 {
+		description += fmt.Sprintf(", %d prompts", sum.prompts)
+	}
+	if sum.resources > 0 {
+		description += fmt.Sprintf(", %d resources", sum.resources)
+	}
+	if sum.resourceTemplates > 0 {
+		description += fmt.Sprintf(", %d resource templates", sum.resourceTemplates)
+	}
+	description += "."
+	if len(sum.tools) > 0 {
+		const preview = 5
+		names := make([]string, 0, preview)
+		for _, tool := range sum.tools[:min(preview, len(sum.tools))] {
+			names = append(names, tool.Name)
+		}
+		description += " Available tools include: " + strings.Join(names, ", ")
+		if len(sum.tools) > preview {
+			description += fmt.Sprintf(" and %d more", len(sum.tools)-preview)
+		}
+		description += "."
+	}
+
+	slog.Info("Registering activation meta-tool", "client", c.name, "tool", metaToolName)
+	meta := mcp.Tool{
+		Name:        metaToolName,
+		Description: description,
+		InputSchema: mcp.ToolInputSchema{Type: "object", Properties: map[string]any{}},
+	}
+	mcpServer.SetTools(server.ServerTool{Tool: meta, Handler: c.activateTools(mcpServer, meta)})
+	return nil
+}
+
+// Connect brings the downstream up without mounting its catalog on a proxy
+// server. The hierarchy router uses it: it lists and calls tools itself.
+func (c *Client) Connect(ctx context.Context, clientInfo mcp.Implementation) error {
+	c.clientInfo = clientInfo
+	return c.connect(ctx, clientInfo, nil)
+}
+
+// NeedPing reports whether the client runs a keepalive probe.
+func (c *Client) NeedPing() bool {
+	return c.needPing
+}
+
+// StartPing starts the keepalive (and, when configured, reconnect) loop. It is
+// idempotent, and stops when ctx is done.
+func (c *Client) StartPing(ctx context.Context) {
+	if !c.needPing {
+		return
+	}
+	c.pingOnce.Do(func() {
+		go c.startPingTask(ctx)
+	})
+}
+
+// GetClient returns the live underlying mcp-go client, or nil before the first
+// connection.
+func (c *Client) GetClient() *client.Client {
+	return c.getClient()
+}
+
+// NewInProcess wraps an already-connected mcp-go client. It exists so tests
+// elsewhere in this module can exercise code that takes a *Client against an
+// in-process MCP server, without spawning a subprocess or opening a socket.
+func NewInProcess(name string, raw *client.Client) *Client {
+	return &Client{name: name, client: raw}
+}
+
+// Kill force-terminates the stdio subprocess behind the client, if there is
+// one. Close cannot be trusted to return for a wedged process.
+func (c *Client) Kill() error {
+	c.mu.RLock()
+	cmd := c.cmd
+	c.mu.RUnlock()
+	if cmd != nil && cmd.Process != nil {
+		return cmd.Process.Kill()
+	}
+	return nil
+}
+
+// CloseWithTimeout closes the client and force-kills the subprocess if Close
+// has not returned within d. Plain Close only closes stdin and then blocks on
+// cmd.Wait(), which never returns for a process that ignores stdin EOF. Killing
+// the process also unblocks that wait, so the goroutine is not leaked.
+func (c *Client) CloseWithTimeout(d time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		_ = c.Kill()
+		return fmt.Errorf("<%s> close timed out after %s, force-killed process", c.name, d)
+	}
+}
+
 func (c *Client) Close() error {
 	c.closed.Store(true)
 	cl := c.getClient()
@@ -808,7 +1087,7 @@ type Server struct {
 	handler   http.Handler
 }
 
-func newMCPServer(name string, serverConfig *config.MCPProxyConfigV2, clientConfig *config.MCPClientConfigV2) (*Server, error) {
+func NewMCPServer(name string, serverConfig *config.MCPProxyConfigV2, clientConfig *config.MCPClientConfigV2) (*Server, error) {
 	if serverConfig == nil {
 		return nil, errors.New("server config is required")
 	}

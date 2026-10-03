@@ -210,7 +210,7 @@ func checkOAuthToken(res *doctorResult, name string) {
 // server, without ever falling back to interactive (browser-based)
 // authorization - it only reports whether one would be needed.
 func checkServerLive(res *doctorResult, conf *config.MCPClientConfigV2) {
-	mcpClient, err := newMCPClient(res.name, conf)
+	mcpClient, err := NewMCPClient(res.name, conf)
 	if err != nil {
 		res.ok = false
 		res.live = fmt.Sprintf("FAILED: %v", config.RedactURLCredentials(err))

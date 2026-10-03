@@ -47,19 +47,19 @@ func TestResourceTemplateWithoutURITemplateIsSkipped(t *testing.T) {
 		map[string]any{"name": "good", "uriTemplate": "test://echo/{word}"},
 	)
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
-	if err := mcpClient.addToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 
 	got := serverResourceTemplateNames(t, proxyServer)
@@ -137,19 +137,19 @@ func TestEmptyAllowListStillExposesAllTools(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha", "beta")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{ToolFilter: &config.ToolFilterConfig{Mode: config.ToolFilterModeAllow}},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
-	if err := mcpClient.addToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 	if got := serverToolNames(t, proxyServer); !slices.Equal(got, []string{"alpha", "beta"}) {
 		t.Fatalf("tools with an empty allow list = %v, want [alpha beta] (legacy behavior)", got)
@@ -163,19 +163,19 @@ func TestDownstreamExecutionMetadataIsStripped(t *testing.T) {
 	downstream.setTools("danger")
 	downstream.setToolExecution(map[string]any{"taskSupport": "required"})
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
-	if err := mcpClient.addToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 
 	resp := proxyServer.HandleMessage(context.Background(), []byte(`{
@@ -204,20 +204,20 @@ func TestResourceReadHonorsRequestTimeout(t *testing.T) {
 	downstream.setResources("test://hang")
 	downstream.hangMethodsNamed("resources/read")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
 	ctx := t.Context()
-	if err := mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 
 	// Bound is normally set only for stdio; the forwarding logic it drives is
@@ -249,20 +249,20 @@ func TestPromptGetHonorsRequestTimeout(t *testing.T) {
 	downstream.setPrompts("hang")
 	downstream.hangMethodsNamed("prompts/get")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
 	ctx := t.Context()
-	if err := mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 	mcpClient.requestTimeout = 250 * time.Millisecond
 
@@ -326,21 +326,21 @@ func TestToolCallErrorRedactsURLCredential(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		// The credential the docs recommend putting in the URL query.
 		URL:     downstream.url + "?key=" + secret,
 		Options: &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
 	ctx := t.Context()
-	if err := mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 
 	// Take the downstream away, then call the registered tool: the transport
@@ -642,17 +642,17 @@ func TestURLRedactionCoversReconnectAndDoctorSinks(t *testing.T) {
 	// Reconnect path: the error that reaches the log must be redacted.
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url + "?key=SINK_SECRET",
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
-	if err := mcpClient.addToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, newProxyServerForTest(t)); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, newProxyServerForTest(t)); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 	downstream.close()
 	reconnectErr := mcpClient.connect(t.Context(), mcp.Implementation{Name: "test"}, mcpClient.mcpServer)

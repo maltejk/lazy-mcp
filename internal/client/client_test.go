@@ -66,13 +66,13 @@ func TestMCPHTTPClientRequestsUncompressedResponses(t *testing.T) {
 		"accept-encoding": "gzip",
 		"X-Test":          "value",
 	}
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           server.URL,
 		Headers:       configuredHeaders,
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
@@ -96,7 +96,7 @@ func TestMCPHTTPClientRequestsUncompressedResponses(t *testing.T) {
 func TestMCPServerListResourcesReturnsEmptyArrayNotNull(t *testing.T) {
 	t.Parallel()
 
-	server, err := newMCPServer("test", &config.MCPProxyConfigV2{
+	server, err := NewMCPServer("test", &config.MCPProxyConfigV2{
 		Type:    config.MCPServerTypeStreamable,
 		Version: "test",
 		BaseURL: "http://localhost:9090",
@@ -104,7 +104,7 @@ func TestMCPServerListResourcesReturnsEmptyArrayNotNull(t *testing.T) {
 		Options: &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPServer: %v", err)
+		t.Fatalf("NewMCPServer: %v", err)
 	}
 
 	assertEmptyJSONArray := func(t *testing.T, raw []byte, field, want string) {
@@ -461,13 +461,13 @@ func serverToolInputSchema(t *testing.T, mcpServer *server.MCPServer, toolName s
 func newProxyServerForTest(t *testing.T) *server.MCPServer {
 	t.Helper()
 
-	proxyServer, err := newMCPServer("test", &config.MCPProxyConfigV2{
+	proxyServer, err := NewMCPServer("test", &config.MCPProxyConfigV2{
 		Type:    config.MCPServerTypeStreamable,
 		Version: "1",
 		BaseURL: "http://localhost:9090",
 	}, &config.MCPClientConfigV2{Options: &config.OptionsV2{}})
 	if err != nil {
-		t.Fatalf("newMCPServer: %v", err)
+		t.Fatalf("NewMCPServer: %v", err)
 	}
 	return proxyServer.mcpServer
 }
@@ -481,20 +481,20 @@ func TestCatalogRegistrationDropsStaleToolsOnReRegister(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha", "beta")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
 	ctx := t.Context()
-	if err := mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 	if got := serverToolNames(t, proxyServer); !slices.Equal(got, []string{"alpha", "beta"}) {
 		t.Fatalf("initial tools = %v, want [alpha beta]", got)
@@ -522,19 +522,19 @@ func TestCatalogRegistrationPreservesInputSchemaPropertyOrder(t *testing.T) {
 	// Deliberately not alphabetical: sorted order would be alpha, zeta.
 	downstream.setRawTools(`[{"name":"ordered","inputSchema":{"type":"object","properties":{"zeta":{"type":"string"},"alpha":{"type":"number"}},"required":["zeta"]}}]`)
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 		Options:       &config.OptionsV2{},
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
-	if err := mcpClient.addToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer: %v", err)
+	if err := mcpClient.AddToMCPServer(t.Context(), mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer: %v", err)
 	}
 
 	schema := serverToolInputSchema(t, proxyServer, "ordered")
@@ -562,12 +562,12 @@ func TestCatalogTimeoutBoundsHungToolsList(t *testing.T) {
 	downstream.setTools("alpha")
 	downstream.hangToolsListCalls(true)
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
@@ -576,18 +576,18 @@ func TestCatalogTimeoutBoundsHungToolsList(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	err = mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer)
+	err = mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer)
 	elapsed := time.Since(start)
 
 	if err == nil {
-		t.Fatal("addToMCPServer succeeded despite a tools/list that never answers")
+		t.Fatal("AddToMCPServer succeeded despite a tools/list that never answers")
 	}
 	if elapsed > 3*time.Second {
-		t.Errorf("addToMCPServer took %v, want it bounded by catalogTimeout", elapsed)
+		t.Errorf("AddToMCPServer took %v, want it bounded by catalogTimeout", elapsed)
 	}
 }
 
-// Regression for a Client built without Options: newMCPClient permits a nil
+// Regression for a Client built without Options: NewMCPClient permits a nil
 // Options, and the keepalive task used to dereference it directly, panicking as
 // soon as such a client connected. The option accessors are nil-safe, so a
 // successful connection must stay up.
@@ -597,19 +597,19 @@ func TestNilOptionsClientDoesNotPanicOnConnect(t *testing.T) {
 	downstream := newRawDownstream(t)
 	downstream.setTools("alpha")
 
-	mcpClient, err := newMCPClient("test", &config.MCPClientConfigV2{
+	mcpClient, err := NewMCPClient("test", &config.MCPClientConfigV2{
 		TransportType: config.MCPClientTypeStreamable,
 		URL:           downstream.url,
 	})
 	if err != nil {
-		t.Fatalf("newMCPClient: %v", err)
+		t.Fatalf("NewMCPClient: %v", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
 
 	proxyServer := newProxyServerForTest(t)
 	ctx := t.Context()
-	if err := mcpClient.addToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
-		t.Fatalf("addToMCPServer with nil Options: %v", err)
+	if err := mcpClient.AddToMCPServer(ctx, mcp.Implementation{Name: "test"}, proxyServer); err != nil {
+		t.Fatalf("AddToMCPServer with nil Options: %v", err)
 	}
 
 	// Let the keepalive task run a tick; a nil dereference there crashes the

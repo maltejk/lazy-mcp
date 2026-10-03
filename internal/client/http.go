@@ -332,7 +332,7 @@ func StartHTTPServer(conf *config.Config) error {
 				// missing command fails here rather than while connecting. Both
 				// have to obey the same panicIfInvalid policy.
 				if mcpClient == nil {
-					created, err := newMCPClient(name, clientConfig)
+					created, err := NewMCPClient(name, clientConfig)
 					if err != nil {
 						// Terminal unless it will be retried: log an error for a
 						// failure that ends the attempt, and stay quiet on the
@@ -367,7 +367,7 @@ func StartHTTPServer(conf *config.Config) error {
 					clients[name] = mcpClient
 					clientsMu.Unlock()
 
-					newServer, sErr := newMCPServer(name, conf.McpProxy, clientConfig)
+					newServer, sErr := NewMCPServer(name, conf.McpProxy, clientConfig)
 					if sErr != nil {
 						// A malformed server definition will not fix itself, so
 						// it is never retried.
@@ -376,7 +376,7 @@ func StartHTTPServer(conf *config.Config) error {
 					server = newServer
 				}
 
-				err := mcpClient.addToMCPServer(ctx, info, server.mcpServer)
+				err := mcpClient.AddToMCPServer(ctx, info, server.mcpServer)
 				if err == nil {
 					slog.Info("Connected", "client", name)
 					mountRoute(mcpClient, server)
