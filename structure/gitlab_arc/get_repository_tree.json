@@ -1,0 +1,45 @@
+{
+  "tools": {
+    "get_repository_tree": {
+      "description": "List files and directories in a repository. Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_repository_tree",
+      "server": "gitlab_arc",
+      "inputSchema": {
+        "properties": {
+          "page_token": {
+            "description": "Token for keyset pagination. Use the next_page_token value returned in the previous response to retrieve the next page.",
+            "type": "string"
+          },
+          "pagination": {
+            "description": "Pagination method. Use 'keyset' for keyset-based pagination (required for repositories with many files). Non-keyset calls keep the legacy array response for backward compatibility; that legacy response shape is deprecated and may be removed in a future major release. Keyset calls return a structured response with items and next_page_token when more pages are available.",
+            "type": "string"
+          },
+          "path": {
+            "description": "The path inside the repository",
+            "type": "string"
+          },
+          "per_page": {
+            "description": "Number of results to show per page",
+            "type": "number"
+          },
+          "project_id": {
+            "description": "The ID or URL-encoded path of the project",
+            "type": "string"
+          },
+          "recursive": {
+            "description": "Boolean value to get a recursive tree",
+            "type": "boolean"
+          },
+          "ref": {
+            "description": "The name of a repository branch or tag. Defaults to the default branch.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

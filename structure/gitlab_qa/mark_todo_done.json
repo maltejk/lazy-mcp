@@ -1,0 +1,21 @@
+{
+  "tools": {
+    "mark_todo_done": {
+      "description": "Mark a GitLab to-do item as done. Use this for the specific operation described; choose a sibling tool when you need a different resource or lifecycle action. It changes remote GitLab state and requires the necessary project or group permission; GitLab returns validation, conflict, permission, or rate-limit errors instead of silently applying an invalid request. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "mark_todo_done",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "The ID of the to-do item",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

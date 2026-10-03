@@ -1,0 +1,55 @@
+{
+  "tools": {
+    "git_rebase": {
+      "description": "Rebase commits onto another branch. Reapplies commits on top of another base tip for a cleaner history.",
+      "maps_to": "git_rebase",
+      "server": "git_dev",
+      "inputSchema": {
+        "properties": {
+          "branch": {
+            "description": "Branch to rebase (default: current branch).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "interactive": {
+            "default": false,
+            "description": "Interactive rebase (not supported in all providers).",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "start",
+            "description": "Rebase operation mode: 'start', 'continue', 'abort', or 'skip'.",
+            "enum": [
+              "start",
+              "continue",
+              "abort",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "onto": {
+            "description": "Rebase onto different commit than upstream.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "preserve": {
+            "default": false,
+            "description": "Preserve merge commits during rebase.",
+            "type": "boolean"
+          },
+          "upstream": {
+            "description": "Upstream branch to rebase onto (required for start mode).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

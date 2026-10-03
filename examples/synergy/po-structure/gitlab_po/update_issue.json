@@ -1,0 +1,90 @@
+{
+  "tools": {
+    "update_issue": {
+      "description": "Update an issue. Returns a slim confirmation by default; set full_response=true for the complete updated issue object. Use this to change fields on an existing issue; use `update_issue_description_patch` for a targeted description edit that avoids sending the full body, and use `create_issue_note` for discussion. The operation mutates issue state, requires issue-edit permission, and returns the updated issue or a validation/permission/conflict error.",
+      "maps_to": "update_issue",
+      "server": "gitlab_po",
+      "inputSchema": {
+        "properties": {
+          "assignee_ids": {
+            "description": "Array of user IDs to assign issue to",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "confidential": {
+            "description": "Set the issue to be confidential",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "The description of the issue",
+            "type": "string"
+          },
+          "discussion_locked": {
+            "description": "Flag to lock discussions",
+            "type": "boolean"
+          },
+          "due_date": {
+            "description": "Date the issue is due (YYYY-MM-DD)",
+            "type": "string"
+          },
+          "full_response": {
+            "description": "If true, return the complete updated issue object. Default returns a slim confirmation (iid, title, state, web_url, updated_at) to reduce token usage.",
+            "type": "boolean"
+          },
+          "issue_iid": {
+            "description": "The internal ID of the project issue",
+            "type": "string"
+          },
+          "issue_type": {
+            "description": "The type of issue. One of issue, incident, test_case or task.",
+            "enum": [
+              "issue",
+              "incident",
+              "test_case",
+              "task"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "description": "Array of label names",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "milestone_id": {
+            "description": "Milestone ID to assign",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or URL-encoded path",
+            "type": "string"
+          },
+          "state_event": {
+            "description": "Update issue state (close/reopen)",
+            "enum": [
+              "close",
+              "reopen"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "description": "The title of the issue",
+            "type": "string"
+          },
+          "weight": {
+            "description": "Weight of the issue (numeric, typically hours of work)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "project_id",
+          "issue_iid"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

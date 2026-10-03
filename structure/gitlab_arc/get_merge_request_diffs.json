@@ -1,0 +1,44 @@
+{
+  "tools": {
+    "get_merge_request_diffs": {
+      "description": "Get the changes/diffs of a merge request (mergeRequestIid or branchName required). Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_merge_request_diffs",
+      "server": "gitlab_arc",
+      "inputSchema": {
+        "properties": {
+          "excluded_file_patterns": {
+            "description": "Array of regex patterns to exclude files from the diff results. Each pattern is a JavaScript-compatible regular expression that matches file paths to ignore. Examples: [\"^vendor/\", \"^test/mocks/\", \"\\.spec\\.ts$\", \"package-lock\\.json\"]",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "source_branch": {
+            "description": "Source branch name",
+            "type": "string"
+          },
+          "view": {
+            "description": "Diff view type",
+            "enum": [
+              "inline",
+              "parallel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

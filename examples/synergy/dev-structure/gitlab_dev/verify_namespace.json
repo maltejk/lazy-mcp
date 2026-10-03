@@ -1,0 +1,25 @@
+{
+  "tools": {
+    "verify_namespace": {
+      "description": "Verify if a namespace path exists. Use parent_id to scope the check to a specific parent namespace — required for nested namespaces where the same path may exist under different parents.",
+      "maps_to": "verify_namespace",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "properties": {
+          "parent_id": {
+            "description": "Parent namespace ID; required to correctly resolve paths in nested namespaces where the same path may exist under different parents",
+            "type": "integer"
+          },
+          "path": {
+            "description": "Namespace path to verify",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

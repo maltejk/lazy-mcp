@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "delete_issue_emoji_reaction": {
+      "description": "Remove an emoji reaction from an issue. Use this only after verifying the target; choose a get or list tool first when you need to inspect state without changing it. It changes or removes remote GitLab data and may be irreversible; it requires the necessary project or group permission and returns validation, conflict, permission, or rate-limit errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "delete_issue_emoji_reaction",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "award_id": {
+            "description": "The ID of the emoji reaction to delete",
+            "type": "string"
+          },
+          "issue_iid": {
+            "description": "The IID of an issue",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "issue_iid",
+          "award_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

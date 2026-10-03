@@ -1,0 +1,35 @@
+{
+  "tools": {
+    "download_attachment": {
+      "description": "Download an uploaded file from a project (images returned as base64; use local_path to save to disk). Use this to retrieve a previously uploaded project attachment; remote mode returns inline base64 for images or a download URL, while local mode can save to a path. It is read-only with respect to GitLab, requires project access, and returns the file content or an attachment/permission error.",
+      "maps_to": "download_attachment",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "properties": {
+          "filename": {
+            "description": "The filename of the upload",
+            "type": "string"
+          },
+          "local_path": {
+            "description": "Local path to save the file (optional, defaults to current directory)",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or URL-encoded path of the project",
+            "type": "string"
+          },
+          "secret": {
+            "description": "The 32-character secret of the upload",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "secret",
+          "filename"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

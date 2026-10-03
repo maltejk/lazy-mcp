@@ -1,0 +1,44 @@
+{
+  "tools": {
+    "git_blame": {
+      "description": "Show line-by-line authorship information for a file, displaying who last modified each line and when. For large files, use startLine/endLine to limit output.",
+      "maps_to": "git_blame",
+      "server": "git_dev",
+      "inputSchema": {
+        "properties": {
+          "endLine": {
+            "description": "End line number (1-indexed).",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "filePath": {
+            "description": "Path to the file to blame (relative to repository root). Must not start with \"-\".",
+            "minLength": 1,
+            "type": "string"
+          },
+          "ignoreWhitespace": {
+            "default": false,
+            "description": "Ignore whitespace changes.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "startLine": {
+            "description": "Start line number (1-indexed).",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filePath"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

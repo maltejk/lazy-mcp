@@ -1,0 +1,75 @@
+{
+  "tools": {
+    "push_files": {
+      "description": "Push multiple files in a single commit. Use this to commit several file changes atomically; use `create_or_update_file` when only one path is involved. Each file defaults to action `create`; optional per-file `action` (create/update/delete/move) and `encoding` (text/base64) are additive. `GITLAB_PERMISSION_MODE=modify` rejects `delete` and `move`. The operation writes repository history on the selected branch, requires repository write permission, and returns the commit result or a validation, conflict, or protected-branch error.",
+      "maps_to": "push_files",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "branch": {
+            "description": "Branch to push to",
+            "type": "string"
+          },
+          "commit_message": {
+            "description": "Commit message",
+            "type": "string"
+          },
+          "files": {
+            "description": "Array of files to push. Each entry defaults to action 'create'. Per-file fields: action (create/update/delete/move), encoding (text/base64; omitted uses GITLAB_REPO_FILE_ENCODING), previous_path (required for move). Content is required for create and update; omit content for delete, or for a move that should keep the original file. GITLAB_PERMISSION_MODE=modify rejects delete and move.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "description": "Commit action for this file. Defaults to 'create'.",
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    "move"
+                  ],
+                  "type": "string"
+                },
+                "content": {
+                  "description": "File content. Required for create and update. Omit for delete, or for a move that should keep the original content. Base64-encoded when encoding is 'base64'.",
+                  "type": "string"
+                },
+                "encoding": {
+                  "description": "Use 'base64' for binary files (content must already be base64-encoded). When omitted, GITLAB_REPO_FILE_ENCODING applies.",
+                  "enum": [
+                    "text",
+                    "base64"
+                  ],
+                  "type": "string"
+                },
+                "file_path": {
+                  "description": "Path of the file in the repo",
+                  "type": "string"
+                },
+                "previous_path": {
+                  "description": "Previous path of the file. Required when action is 'move'.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_path"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch",
+          "files",
+          "commit_message",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

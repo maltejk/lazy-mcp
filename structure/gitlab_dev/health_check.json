@@ -1,0 +1,12 @@
+{
+  "tools": {
+    "health_check": {
+      "description": "Verify server status and authentication. When authenticated, also reports the GitLab instance version from GET /api/v4/version (version, revision, enterprise). Version lookup failures do not fail the health check — those fields are omitted. Use this to verify server connectivity and authentication before making GitLab requests; use `whoami` when the authenticated user's identity is the goal. It does not mutate GitLab state and returns server/authentication status plus GitLab version details when available.",
+      "maps_to": "health_check",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "type": "object"
+      }
+    }
+  }
+}

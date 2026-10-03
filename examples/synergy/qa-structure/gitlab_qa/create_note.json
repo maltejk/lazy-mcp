@@ -1,0 +1,40 @@
+{
+  "tools": {
+    "create_note": {
+      "description": "Create a new note (comment) to an issue or merge request. Use this for a top-level comment on an issue or merge request when no typed discussion operation is needed; use `create_merge_request_thread` or `create_issue_note` for threaded replies. The operation creates remote discussion content, requires note permission, and returns the created note or a target/permission/validation error.",
+      "maps_to": "create_note",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Note content",
+            "type": "string"
+          },
+          "noteable_iid": {
+            "description": "IID of the issue or merge request",
+            "type": "string"
+          },
+          "noteable_type": {
+            "description": "Type of noteable (issue or merge_request)",
+            "enum": [
+              "issue",
+              "merge_request"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or namespace/project_path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "noteable_type",
+          "body",
+          "project_id",
+          "noteable_iid"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

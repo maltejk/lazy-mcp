@@ -1,0 +1,40 @@
+{
+  "tools": {
+    "create_issue_note_emoji_reaction": {
+      "description": "Add an emoji reaction to an issue note. Pass discussion_id for discussion thread replies. Use this for a new resource or action; choose the corresponding update or edit tool when the resource already exists. It changes remote GitLab state and requires the necessary project or group permission; GitLab returns validation, conflict, permission, or rate-limit errors instead of silently applying an invalid request. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "create_issue_note_emoji_reaction",
+      "server": "gitlab_arc",
+      "inputSchema": {
+        "properties": {
+          "discussion_id": {
+            "description": "The ID of a discussion thread. Required for notes that are discussion replies; omit for top-level notes.",
+            "type": "string"
+          },
+          "issue_iid": {
+            "description": "The IID of an issue",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the emoji without colons (e.g. 'thumbsup', 'rocket', 'eyes')",
+            "type": "string"
+          },
+          "note_id": {
+            "description": "The ID of a note (comment or thread reply)",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project_id",
+          "issue_iid",
+          "note_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

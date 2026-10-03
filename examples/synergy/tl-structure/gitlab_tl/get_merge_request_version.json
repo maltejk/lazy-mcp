@@ -1,0 +1,35 @@
+{
+  "tools": {
+    "get_merge_request_version": {
+      "description": "Get a specific version of a merge request. Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_merge_request_version",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "merge_request_iid": {
+            "description": "The internal ID of the merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "unidiff": {
+            "description": "Present diffs in the unified diff format. Default is false. Introduced in GitLab 16.5.",
+            "type": "boolean"
+          },
+          "version_id": {
+            "description": "The ID of the merge request diff version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "merge_request_iid",
+          "version_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

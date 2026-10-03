@@ -1,0 +1,25 @@
+{
+  "tools": {
+    "fork_repository": {
+      "description": "Fork a project to your account or specified namespace. Use this to create a copy of an existing project in the current user's namespace or a permitted namespace; use `search_repositories` or `get_project` to inspect projects without copying them. The operation creates a new project, requires fork permission, and returns the forked project or a namespace/permission error.",
+      "maps_to": "fork_repository",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "namespace": {
+            "description": "Namespace to fork to (full path)",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

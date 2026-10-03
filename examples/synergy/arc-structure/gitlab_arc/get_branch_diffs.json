@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "get_branch_diffs": {
+      "description": "Get diffs between two branches or commits. Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_branch_diffs",
+      "server": "gitlab_arc",
+      "inputSchema": {
+        "properties": {
+          "excluded_file_patterns": {
+            "description": "Array of regex patterns to exclude files from the diff results. Each pattern is a JavaScript-compatible regular expression that matches file paths to ignore. Examples: [\"^vendor/\", \"^test/mocks/\", \"\\.spec\\.ts$\", \"package-lock\\.json\"]",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "The base branch or commit SHA to compare from",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "straight": {
+            "description": "Comparison method: false for '...' (default), true for '--'",
+            "type": "boolean"
+          },
+          "to": {
+            "description": "The target branch or commit SHA to compare to",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

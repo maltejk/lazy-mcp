@@ -1,0 +1,86 @@
+{
+  "tools": {
+    "update_merge_request": {
+      "description": "Update a merge request (mergeRequestIid or branchName required). Use this for an existing resource; choose the corresponding create tool for a new resource and a note tool for discussion-only text. It changes remote GitLab state and requires the necessary project or group permission; GitLab returns validation, conflict, permission, or rate-limit errors instead of silently applying an invalid request. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "update_merge_request",
+      "server": "gitlab_po",
+      "inputSchema": {
+        "properties": {
+          "assignee_ids": {
+            "description": "The ID of the users to assign the MR to",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "description": {
+            "description": "The description of the merge request",
+            "type": "string"
+          },
+          "draft": {
+            "description": "Work in progress merge request",
+            "type": "boolean"
+          },
+          "labels": {
+            "description": "Labels for the MR",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "milestone_id": {
+            "description": "Milestone ID to assign. Set to 0 to unassign. Null is treated as omitted.",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "remove_source_branch": {
+            "description": "Flag indicating if the source branch should be removed",
+            "type": "boolean"
+          },
+          "reviewer_ids": {
+            "description": "The ID of the users to assign as reviewers of the MR",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "source_branch": {
+            "description": "Source branch name",
+            "type": "string"
+          },
+          "squash": {
+            "description": "Squash commits into a single commit when merging",
+            "type": "boolean"
+          },
+          "state_event": {
+            "description": "New state (close/reopen) for the MR",
+            "enum": [
+              "close",
+              "reopen"
+            ],
+            "type": "string"
+          },
+          "target_branch": {
+            "description": "The target branch",
+            "type": "string"
+          },
+          "title": {
+            "description": "The title of the merge request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

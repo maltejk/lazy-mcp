@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "git_wrapup_instructions": {
+      "description": "Returns a Git wrap-up protocol: an acceptance-criteria checklist the agent must satisfy before the session is considered shipped. Uses the operator's custom instructions if configured, otherwise emits a generic goals-strict/mechanism-generic default. Enriches the response with a repository snapshot (status, recent commits, recent tags) so the agent has immediate orientation for the commit and release steps.",
+      "maps_to": "git_wrapup_instructions",
+      "server": "git_tl",
+      "inputSchema": {
+        "properties": {
+          "acknowledgement": {
+            "description": "Acknowledgement to initiate the wrap-up workflow.",
+            "enum": [
+              "Y",
+              "y",
+              "Yes",
+              "yes"
+            ],
+            "type": "string"
+          },
+          "createTag": {
+            "description": "Controls whether the tag criterion appears in the emitted protocol. Omit or set `true` to include the tag step. Set `false` to omit it entirely — e.g., when tagging is deferred to a separate release step.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "acknowledgement"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

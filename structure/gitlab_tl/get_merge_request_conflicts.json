@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "get_merge_request_conflicts": {
+      "description": "Get the conflicts of a merge request. Use this to inspect merge conflicts before attempting `merge_merge_request`; it reports conflicts and does not resolve them. It is read-only, requires access to the project and merge request, and returns GitLab's conflict data or an error when the request cannot be evaluated.",
+      "maps_to": "get_merge_request_conflicts",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "merge_request_iid": {
+            "description": "The IID of the merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "merge_request_iid"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

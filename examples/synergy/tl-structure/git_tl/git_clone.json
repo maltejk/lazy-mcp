@@ -1,0 +1,51 @@
+{
+  "tools": {
+    "git_clone": {
+      "description": "Clone a repository from a remote URL or local path. Accepts HTTP(S), SSH, git://, file://, and bare filesystem paths, with optional shallow cloning.",
+      "maps_to": "git_clone",
+      "server": "git_tl",
+      "inputSchema": {
+        "properties": {
+          "bare": {
+            "default": false,
+            "description": "Create a bare repository (no working directory).",
+            "type": "boolean"
+          },
+          "branch": {
+            "description": "Specific branch to clone (defaults to remote HEAD). Must not start with \"-\".",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "depth": {
+            "description": "Create a shallow clone with history truncated to N commits.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mirror": {
+            "default": false,
+            "description": "Create a mirror clone (implies bare).",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Destination path where the repository should be cloned. Must not start with \"-\".",
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "Git repository URL: HTTP(S), SSH (ssh://… or user@host:path), git://, file://, or an absolute filesystem path. Must not start with \"-\" and no segment may start with \"-\".",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

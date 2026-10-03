@@ -1,0 +1,44 @@
+{
+  "tools": {
+    "git_show": {
+      "description": "Show details of a git object (commit, tree, blob, or tag). Displays commit information and the diff of changes introduced.",
+      "maps_to": "git_show",
+      "server": "git_dev",
+      "inputSchema": {
+        "properties": {
+          "filePath": {
+            "description": "View specific file at a given commit reference. When provided, shows the file content from the specified object. Must not start with \"-\".",
+            "minLength": 1,
+            "type": "string"
+          },
+          "format": {
+            "description": "Output format for the git object. Use \"raw\" for unprocessed git output.",
+            "enum": [
+              "raw"
+            ],
+            "type": "string"
+          },
+          "object": {
+            "description": "Git object to show (commit hash, branch, tag, tree, or blob).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "stat": {
+            "default": false,
+            "description": "Show diffstat instead of full diff.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

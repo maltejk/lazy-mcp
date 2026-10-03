@@ -1,0 +1,91 @@
+{
+  "tools": {
+    "list_projects": {
+      "description": "List projects accessible by the current user. Use this for a collection of resources; choose the corresponding get tool when you already know the single resource to inspect. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "list_projects",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "properties": {
+          "archived": {
+            "description": "Filter for archived projects",
+            "type": "boolean"
+          },
+          "membership": {
+            "description": "Filter for projects where current user is a member",
+            "type": "boolean"
+          },
+          "min_access_level": {
+            "description": "Filter by minimum access level",
+            "type": "number"
+          },
+          "order_by": {
+            "description": "Return projects ordered by field",
+            "enum": [
+              "id",
+              "name",
+              "path",
+              "created_at",
+              "updated_at",
+              "last_activity_at"
+            ],
+            "type": "string"
+          },
+          "owned": {
+            "description": "Filter for projects owned by current user",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page number for pagination (default: 1)",
+            "type": "number"
+          },
+          "per_page": {
+            "description": "Number of items per page (max: 100, default: 20)",
+            "type": "number"
+          },
+          "search": {
+            "description": "Search term for projects",
+            "type": "string"
+          },
+          "search_namespaces": {
+            "description": "Needs to be true if search is full path",
+            "type": "boolean"
+          },
+          "simple": {
+            "description": "Return only limited fields",
+            "type": "boolean"
+          },
+          "sort": {
+            "description": "Return projects sorted in ascending or descending order",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
+          "topic": {
+            "description": "Filter by topic (projects tagged with this topic)",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Filter by project visibility",
+            "enum": [
+              "public",
+              "internal",
+              "private"
+            ],
+            "type": "string"
+          },
+          "with_issues_enabled": {
+            "description": "Filter projects with issues feature enabled",
+            "type": "boolean"
+          },
+          "with_merge_requests_enabled": {
+            "description": "Filter projects with merge requests feature enabled",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

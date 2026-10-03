@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "delete_branch": {
+      "description": "Delete branch from project. Use this only after confirming the branch name and intended data loss; use `get_branch` or `list_branches` before deletion and never use it to remove branch protection. The operation permanently removes a remote branch, requires branch-delete permission, and returns the deletion result or a protected-branch, missing-resource, or permission error.",
+      "maps_to": "delete_branch",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "branch_name": {
+            "description": "Name of the branch to delete",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_name",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

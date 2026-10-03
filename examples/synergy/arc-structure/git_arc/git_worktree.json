@@ -1,0 +1,72 @@
+{
+  "tools": {
+    "git_worktree": {
+      "description": "Manage multiple working trees: list worktrees, add new worktrees for parallel work, remove worktrees, or move worktrees to new locations.",
+      "maps_to": "git_worktree",
+      "server": "git_arc",
+      "inputSchema": {
+        "properties": {
+          "branch": {
+            "description": "For add operation: create a NEW branch with this name in the new worktree. Fails if the branch already exists — use `commitish` to check out an existing branch instead.",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "commitish": {
+            "description": "For add operation: check out this existing branch/commit/tag in the new worktree (no new branch is created).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "detach": {
+            "default": false,
+            "description": "Create worktree with detached HEAD (for add operation).",
+            "type": "boolean"
+          },
+          "dryRun": {
+            "default": false,
+            "description": "Preview the operation without executing it (for prune operation).",
+            "type": "boolean"
+          },
+          "force": {
+            "default": false,
+            "description": "Force operation (for remove operation with uncommitted changes).",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "list",
+            "description": "The worktree operation to perform.",
+            "enum": [
+              "list",
+              "add",
+              "remove",
+              "move",
+              "prune"
+            ],
+            "type": "string"
+          },
+          "newPath": {
+            "description": "New path for the worktree (for move operation). Must not start with \"-\".",
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "verbose": {
+            "default": false,
+            "description": "Provide detailed output for worktree operations.",
+            "type": "boolean"
+          },
+          "worktreePath": {
+            "description": "Path for the new worktree (for add/move operations). Must not start with \"-\".",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

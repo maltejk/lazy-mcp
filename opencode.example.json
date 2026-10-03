@@ -1,0 +1,273 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "product-owner",
+  "mcp": {
+    "lazymcp_po": {
+      "type": "local",
+      "command": [
+        "/home/agent/Developer/lazy-mcp/lazy-mcp",
+        "-config", "/home/agent/Developer/lazy-mcp/examples/synergy/po.config.json",
+        "-hierarchy", "/home/agent/Developer/lazy-mcp/examples/synergy/po-structure"
+      ]
+    },
+    "lazymcp_tl": {
+      "type": "local",
+      "command": [
+        "/home/agent/Developer/lazy-mcp/lazy-mcp",
+        "-config", "/home/agent/Developer/lazy-mcp/examples/synergy/tl.config.json",
+        "-hierarchy", "/home/agent/Developer/lazy-mcp/examples/synergy/tl-structure"
+      ]
+    },
+    "lazymcp_dev": {
+      "type": "local",
+      "command": [
+        "/home/agent/Developer/lazy-mcp/lazy-mcp",
+        "-config", "/home/agent/Developer/lazy-mcp/examples/synergy/dev.config.json",
+        "-hierarchy", "/home/agent/Developer/lazy-mcp/examples/synergy/dev-structure"
+      ]
+    },
+    "lazymcp_qa": {
+      "type": "local",
+      "command": [
+        "/home/agent/Developer/lazy-mcp/lazy-mcp",
+        "-config", "/home/agent/Developer/lazy-mcp/examples/synergy/qa.config.json",
+        "-hierarchy", "/home/agent/Developer/lazy-mcp/examples/synergy/qa-structure"
+      ]
+    },
+    "lazymcp_arc": {
+      "type": "local",
+      "command": [
+        "/home/agent/Developer/lazy-mcp/lazy-mcp",
+        "-config", "/home/agent/Developer/lazy-mcp/examples/synergy/arc.config.json",
+        "-hierarchy", "/home/agent/Developer/lazy-mcp/examples/synergy/arc-structure"
+      ]
+    }
+  },
+  "agent": {
+    "build": { "disable": true },
+    "plan": { "disable": true },
+    "general": { "disable": true },
+    "explore": {
+      "mode": "subagent",
+      "permission": {
+        "bash": {
+          "*": "deny",
+          "ls *": "allow",
+          "echo *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny"
+      }
+    },
+    "architect": {
+      "mode": "primary",
+      "temperature": 0.1,
+      "description": "Co-Architect — explore codebases, ask clarifying questions, write ADRs, propose framework improvements.",
+      "color": "#4A90D9",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          "docs/adrs/*": "allow",
+          "AGENTS.md": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "grep *": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "ls *": "allow",
+          "mkdir *": "allow",
+          "echo *": "allow",
+          "jq *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny",
+        "lazymcp_arc*": "allow",
+        "task": {
+          "*": "deny",
+          "explore": "allow"
+        },
+        "question": "allow",
+        "external_directory": "deny"
+      },
+      "prompt": "{file:.opencode/prompts/architect.md}"
+    },
+    "product-owner": {
+      "mode": "primary",
+      "temperature": 0.2,
+      "description": "Product Owner — own the backlog, create per-ticket worktrees + devcontainers, manage tk (tickets), spawn tech-lead/developer/qa, merge MRs, own releases.",
+      "color": "#50B86C",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          "CHANGELOG.md": "allow",
+          ".worktrees/*": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "tk *": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "ls *": "allow",
+          "mkdir *": "allow",
+          "cp *": "allow",
+          "mv *": "allow",
+          "devcontainer *": "allow",
+          "docker ps*": "allow",
+          "docker stop*": "allow",
+          "docker rm*": "allow",
+          "echo *": "allow",
+          "jq *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny",
+        "lazymcp_po*": "allow",
+        "task": {
+          "*": "deny",
+          "tech-lead": "allow",
+          "explore": "allow",
+          "developer": "allow",
+          "qa": "allow"
+        },
+        "question": "allow",
+        "external_directory": "deny"
+      },
+      "prompt": "{file:.opencode/prompts/product-owner.md}"
+    },
+    "tech-lead": {
+      "mode": "subagent",
+      "hidden": true,
+      "description": "Tech Lead — write technical specs per ticket, inside the ticket's own worktree.",
+      "color": "#F5A623",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          ".worktrees/*": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "tk start*": "allow",
+          "tk status*": "allow",
+          "tk add-note*": "allow",
+          "tk query*": "allow",
+          "tk show*": "allow",
+          "mkdir *": "allow",
+          "ls *": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "echo *": "allow",
+          "jq *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny",
+        "lazymcp_tl*": "allow",
+        "task": {
+          "*": "deny"
+        },
+        "external_directory": "deny"
+      },
+      "prompt": "{file:.opencode/prompts/tech-lead.md}"
+    },
+    "developer": {
+      "mode": "subagent",
+      "hidden": true,
+      "description": "Developer — implement specs using git worktrees and devcontainers. Push branches, open MRs.",
+      "color": "#7ED321",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          ".worktrees/*": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "tk start*": "allow",
+          "tk status*": "allow",
+          "tk add-note*": "allow",
+          "tk query*": "allow",
+          "tk show*": "allow",
+          "devcontainer *": "allow",
+          "npm *": "allow",
+          "npx *": "allow",
+          "mkdir *": "allow",
+          "ls *": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "cp *": "allow",
+          "mv *": "allow",
+          "echo *": "allow",
+          "jq *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny",
+        "lazymcp_dev*": "allow",
+        "task": {
+          "*": "deny"
+        },
+        "external_directory": "deny"
+      },
+      "prompt": "{file:.opencode/prompts/developer.md}"
+    },
+    "qa": {
+      "mode": "subagent",
+      "hidden": true,
+      "description": "QA Engineer — write and run tests with devcontainers. Only edits test files, never source code.",
+      "color": "#9013FE",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          ".worktrees/*": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "tk start*": "allow",
+          "tk status*": "allow",
+          "tk add-note*": "allow",
+          "tk query*": "allow",
+          "tk show*": "allow",
+          "devcontainer *": "allow",
+          "ls *": "allow",
+          "grep *": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "mkdir *": "allow",
+          "cp *": "allow",
+          "echo *": "allow",
+          "jq *": "allow",
+          "tail *": "allow",
+          "head *": "allow",
+          "sleep *": "allow"
+        },
+        "lazymcp_*": "deny",
+        "lazymcp_qa*": "allow",
+        "task": {
+          "*": "deny"
+        },
+        "external_directory": "deny"
+      },
+      "prompt": "{file:.opencode/prompts/qa.md}"
+    }
+  },
+  "permission": {
+    "edit": {
+      "*": "deny"
+    },
+    "bash": {
+      "*": "deny"
+    },
+    "lazymcp_*": "deny",
+    "external_directory": "deny"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "unapprove_merge_request": {
+      "description": "Unapprove a merge request. Use this to remove the current user's approval from an existing merge request; use `merge_merge_request` only when you intend to merge. The operation changes review state and requires approval permission, and GitLab returns the updated result or an error when the request or approval is unavailable.",
+      "maps_to": "unapprove_merge_request",
+      "server": "gitlab_po",
+      "inputSchema": {
+        "properties": {
+          "merge_request_iid": {
+            "description": "The IID of the merge request to unapprove",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "merge_request_iid"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

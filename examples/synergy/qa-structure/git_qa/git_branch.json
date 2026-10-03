@@ -1,0 +1,95 @@
+{
+  "tools": {
+    "git_branch": {
+      "description": "Manage branches: list all branches, show current branch, create a new branch, delete a branch, or rename a branch.",
+      "maps_to": "git_branch",
+      "server": "git_qa",
+      "inputSchema": {
+        "properties": {
+          "all": {
+            "default": false,
+            "description": "For list mode: show both local and remote branches.",
+            "type": "boolean"
+          },
+          "branchName": {
+            "description": "Branch name for create/delete/rename operations.",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "force": {
+            "default": false,
+            "description": "Force the operation, bypassing safety checks.",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "For list mode: cap the number of branches returned (applied at the git command). Use on repos with many branches.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "merged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "description": "Commit reference: full/short hash, branch name, tag name, or relative ref (HEAD~1). Must not start with \"-\".",
+                "minLength": 1,
+                "type": "string"
+              }
+            ],
+            "description": "For list mode: show only branches merged into HEAD (true) or specified commit (string)."
+          },
+          "mode": {
+            "default": "list",
+            "description": "The branch operation to perform.",
+            "enum": [
+              "list",
+              "create",
+              "delete",
+              "rename",
+              "show-current"
+            ],
+            "type": "string"
+          },
+          "newBranchName": {
+            "description": "New branch name for rename operation.",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "noMerged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "description": "Commit reference: full/short hash, branch name, tag name, or relative ref (HEAD~1). Must not start with \"-\".",
+                "minLength": 1,
+                "type": "string"
+              }
+            ],
+            "description": "For list mode: show only branches not merged into HEAD (true) or specified commit (string)."
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "remote": {
+            "default": false,
+            "description": "For list mode: show only remote branches.",
+            "type": "boolean"
+          },
+          "startPoint": {
+            "description": "Starting point (commit/branch) for new branch creation.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "tools": {
+    "git_clear_working_dir": {
+      "description": "Clear the session working directory setting. This resets the context without restarting the server. Subsequent git operations will require an explicit path parameter unless git_set_working_dir is called again.",
+      "maps_to": "git_clear_working_dir",
+      "server": "git_dev",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "description": "Explicit confirmation required to clear working directory. Accepted values: 'Y', 'y', 'Yes', or 'yes'.",
+            "enum": [
+              "Y",
+              "y",
+              "Yes",
+              "yes"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

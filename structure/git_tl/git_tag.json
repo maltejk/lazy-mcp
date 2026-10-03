@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "git_tag": {
+      "description": "Manage tags: list all tags, create a new tag, delete a tag, or verify a signed tag. Tags are used to mark specific points in history (releases, milestones). Verify runs `git tag -v` and returns a structured result distinguishing unsigned tags, missing trust configuration, bad signatures, and valid signatures.",
+      "maps_to": "git_tag",
+      "server": "git_tl",
+      "inputSchema": {
+        "properties": {
+          "annotated": {
+            "default": false,
+            "description": "Create an annotated tag with a default \"Tag \u003cname\u003e\" message. Only effective when no message is provided and signing is disabled — otherwise the tag is always annotated.",
+            "type": "boolean"
+          },
+          "commit": {
+            "description": "Commit to tag (default: HEAD for create operation).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "force": {
+            "default": false,
+            "description": "Overwrite an existing tag (create mode only; has no effect on list or delete).",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "For list mode: cap the number of tags returned (applied at the git command via `--count=N`). Use on repos with many tags.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "message": {
+            "description": "Tag message. Providing a message always produces an annotated tag (git does not support messages on lightweight tags). For release tags, summarize notable changes.",
+            "type": "string"
+          },
+          "mode": {
+            "default": "list",
+            "description": "The tag operation to perform.",
+            "enum": [
+              "list",
+              "create",
+              "delete",
+              "verify"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "tagName": {
+            "description": "Tag name for create/delete/verify operations.",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

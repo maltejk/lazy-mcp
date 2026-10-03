@@ -1,0 +1,24 @@
+{
+  "tools": {
+    "git_status": {
+      "description": "Show the working tree status including staged, unstaged, and untracked files.",
+      "maps_to": "git_status",
+      "server": "git_qa",
+      "inputSchema": {
+        "properties": {
+          "includeUntracked": {
+            "default": true,
+            "description": "Include untracked files in the output.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

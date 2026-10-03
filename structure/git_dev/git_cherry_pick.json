@@ -1,0 +1,69 @@
+{
+  "tools": {
+    "git_cherry_pick": {
+      "description": "Cherry-pick commits from other branches. Apply specific commits to the current branch without merging entire branches.",
+      "maps_to": "git_cherry_pick",
+      "server": "git_dev",
+      "inputSchema": {
+        "properties": {
+          "abort": {
+            "default": false,
+            "description": "Abort cherry-pick operation.",
+            "type": "boolean"
+          },
+          "commits": {
+            "description": "Commit hashes to cherry-pick.",
+            "items": {
+              "description": "Commit reference: full/short hash, branch name, tag name, or relative ref (HEAD~1). Must not start with \"-\".",
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "continueOperation": {
+            "default": false,
+            "description": "Continue cherry-pick after resolving conflicts.",
+            "type": "boolean"
+          },
+          "mainline": {
+            "description": "For merge commits, specify which parent to follow (1 for first parent, 2 for second, etc.).",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "noCommit": {
+            "default": false,
+            "description": "Don't create commit (stage changes only).",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "signoff": {
+            "default": false,
+            "description": "Add Signed-off-by line to the commit message.",
+            "type": "boolean"
+          },
+          "strategy": {
+            "description": "Merge strategy to use for cherry-pick.",
+            "enum": [
+              "ort",
+              "recursive",
+              "octopus",
+              "ours",
+              "subtree"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "commits"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

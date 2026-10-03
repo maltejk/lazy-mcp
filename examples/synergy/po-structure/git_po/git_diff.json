@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "git_diff": {
+      "description": "View differences between commits, branches, or working tree. Shows changes in unified diff format.",
+      "maps_to": "git_diff",
+      "server": "git_po",
+      "inputSchema": {
+        "properties": {
+          "autoExclude": {
+            "default": true,
+            "description": "Automatically exclude lock files and other generated files (e.g., package-lock.json, yarn.lock, bun.lock, poetry.lock, go.sum) from diff output to reduce context bloat. Set to false if you need to inspect these files.",
+            "type": "boolean"
+          },
+          "contextLines": {
+            "default": 3,
+            "description": "Number of context lines to show around changes.",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "includeUntracked": {
+            "default": false,
+            "description": "Include untracked files in the diff. Useful for reviewing all upcoming changes.",
+            "type": "boolean"
+          },
+          "nameOnly": {
+            "default": false,
+            "description": "Show only names of changed files, not the diff content.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "paths": {
+            "description": "Limit diff to specific file paths (relative to repository root). Entries must not start with \"-\".",
+            "items": {
+              "description": "File path (must not start with \"-\").",
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "Source commit/branch to compare from. If target is specified but not source, compares target against working tree.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Show diff of staged changes instead of unstaged.",
+            "type": "boolean"
+          },
+          "stat": {
+            "default": false,
+            "description": "Show diffstat (summary of changes) instead of full diff content.",
+            "type": "boolean"
+          },
+          "target": {
+            "description": "Target commit/branch to compare against. If not specified, shows unstaged changes in working tree.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

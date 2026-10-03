@@ -1,0 +1,36 @@
+{
+  "tools": {
+    "resolve_merge_request_thread": {
+      "description": "Resolve a thread on a merge request. Use this to mark an existing merge request review thread resolved; use `update_merge_request_discussion_note` when the note text itself must change. The operation changes review state, requires permission to resolve discussions, and returns the updated discussion or a missing-thread/permission error.",
+      "maps_to": "resolve_merge_request_thread",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "discussion_id": {
+            "description": "The ID of a thread",
+            "type": "string"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "resolved": {
+            "description": "Whether to resolve the thread",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "project_id",
+          "merge_request_iid",
+          "discussion_id",
+          "resolved"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

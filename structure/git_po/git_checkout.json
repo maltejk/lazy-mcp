@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "git_checkout": {
+      "description": "Switch branches or restore working tree files. Can checkout an existing branch, create a new branch, or restore specific files.",
+      "maps_to": "git_checkout",
+      "server": "git_po",
+      "inputSchema": {
+        "properties": {
+          "createBranch": {
+            "default": false,
+            "description": "Create a new branch with the specified name.",
+            "type": "boolean"
+          },
+          "force": {
+            "default": false,
+            "description": "Force the operation, bypassing safety checks.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "paths": {
+            "description": "Specific file paths to checkout/restore (relative to repository root). Entries must not start with \"-\".",
+            "items": {
+              "description": "File path (must not start with \"-\").",
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "description": "Branch name (must follow git naming conventions, no leading \"-\").",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "description": "Commit reference: full/short hash, branch name, tag name, or relative ref (HEAD~1). Must not start with \"-\".",
+                "minLength": 1,
+                "type": "string"
+              }
+            ],
+            "description": "Branch name, commit hash, or tag to checkout."
+          },
+          "track": {
+            "description": "Set up tracking relationship with remote branch when creating new branch.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

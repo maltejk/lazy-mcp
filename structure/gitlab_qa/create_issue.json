@@ -1,0 +1,63 @@
+{
+  "tools": {
+    "create_issue": {
+      "description": "Create a new issue. Use this to open a new issue; use `update_issue` for an existing issue and `create_issue_note` to add discussion without changing issue fields. The operation creates remote project data, requires issue creation permission, and returns the new issue or a validation, permission, or duplicate-related error.",
+      "maps_to": "create_issue",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "assignee_ids": {
+            "description": "Array of user IDs to assign",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "description": {
+            "description": "Issue description",
+            "type": "string"
+          },
+          "issue_type": {
+            "default": "issue",
+            "description": "The type of issue. One of issue, incident, test_case or task.",
+            "enum": [
+              "issue",
+              "incident",
+              "test_case",
+              "task"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "description": "Array of label names",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "milestone_id": {
+            "description": "Milestone ID to assign",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "title": {
+            "description": "Issue title",
+            "type": "string"
+          },
+          "weight": {
+            "description": "Weight of the issue (numeric, typically hours of work)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "title",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "update_default_branch": {
+      "description": "Change the default branch of a project. Use this to change which branch GitLab treats as the project's default; use `create_branch` to create a branch rather than changing project defaults. The operation changes project settings and may affect clone, merge request, and CI defaults, requires project-maintainer permission, and returns the updated project or a validation/permission error.",
+      "maps_to": "update_default_branch",
+      "server": "gitlab_po",
+      "inputSchema": {
+        "properties": {
+          "default_branch": {
+            "description": "The new default branch name for the project",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "default_branch",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

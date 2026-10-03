@@ -1,0 +1,40 @@
+{
+  "tools": {
+    "create_merge_request_discussion_note": {
+      "description": "Add a new discussion note to an existing merge request thread. Use this to reply inside an existing merge request discussion; use `create_merge_request_thread` to start a new thread and `create_merge_request_note` for a top-level note. The operation creates remote review content, requires note permission, and returns the new note or a missing-discussion/position/permission error.",
+      "maps_to": "create_merge_request_discussion_note",
+      "server": "gitlab_tl",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "The content of the note or reply",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Date the note was created at (ISO 8601 format)",
+            "type": "string"
+          },
+          "discussion_id": {
+            "description": "The ID of a thread",
+            "type": "string"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "project_id",
+          "merge_request_iid",
+          "discussion_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

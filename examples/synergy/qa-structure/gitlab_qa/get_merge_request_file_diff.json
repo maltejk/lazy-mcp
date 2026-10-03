@@ -1,0 +1,41 @@
+{
+  "tools": {
+    "get_merge_request_file_diff": {
+      "description": "Get diffs for specific files from a merge request (mergeRequestIid or branchName required). Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_merge_request_file_diff",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "file_paths": {
+            "description": "List of file paths to retrieve diffs for (e.g. ['src/api/users.ts', 'src/repo/user.go']). Call list_merge_request_changed_files first to get the full list of changed paths.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "source_branch": {
+            "description": "Source branch name",
+            "type": "string"
+          },
+          "unidiff": {
+            "description": "Present diff in the unified diff format. Default is false.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "project_id",
+          "file_paths"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

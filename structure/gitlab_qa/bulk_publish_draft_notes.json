@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "bulk_publish_draft_notes": {
+      "description": "Publish all draft notes for a merge request. Optionally sets reviewer_state and posts a summary note (GitLab 19.2+). Can set reviewer_state even with no drafts. Use this for the specific operation described; choose a sibling tool when you need a different resource or lifecycle action. It changes remote GitLab state and requires the necessary project or group permission; GitLab returns validation, conflict, permission, or rate-limit errors instead of silently applying an invalid request. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "bulk_publish_draft_notes",
+      "server": "gitlab_qa",
+      "inputSchema": {
+        "properties": {
+          "internal": {
+            "description": "If true, the summary note is internal (GitLab 19.2+, default false)",
+            "type": "boolean"
+          },
+          "merge_request_iid": {
+            "description": "The IID of a merge request",
+            "type": "string"
+          },
+          "note": {
+            "description": "Summary note body to post on the merge request (GitLab 19.2+)",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "reviewer_state": {
+            "description": "Set reviewer review state after publishing (GitLab 19.2+). Does not record a formal approval. Works even with no draft notes.",
+            "enum": [
+              "requested_changes",
+              "reviewed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "merge_request_iid"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

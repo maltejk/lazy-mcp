@@ -1,0 +1,30 @@
+{
+  "tools": {
+    "get_commit_diff": {
+      "description": "Get changes/diffs of a specific commit. Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_commit_diff",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "properties": {
+          "full_diff": {
+            "description": "Whether to return the full diff or only first page (default: false)",
+            "type": "boolean"
+          },
+          "project_id": {
+            "description": "Project ID or complete URL-encoded path to project",
+            "type": "string"
+          },
+          "sha": {
+            "description": "The commit hash or name of a repository branch or tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha",
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

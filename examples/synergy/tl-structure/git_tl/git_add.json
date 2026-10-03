@@ -1,0 +1,44 @@
+{
+  "tools": {
+    "git_add": {
+      "description": "Stage files for commit. Add file contents to the staging area (index) to prepare for the next commit.",
+      "maps_to": "git_add",
+      "server": "git_tl",
+      "inputSchema": {
+        "properties": {
+          "all": {
+            "default": false,
+            "description": "Include all items (varies by operation).",
+            "type": "boolean"
+          },
+          "force": {
+            "default": false,
+            "description": "Allow adding otherwise ignored files.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": ".",
+            "description": "Path to the Git repository. Defaults to session working directory set via git_set_working_dir.",
+            "type": "string"
+          },
+          "paths": {
+            "default": [],
+            "description": "Array of file or directory paths to stage (relative to repository root). Use [\".\"] to stage all changes. Paths must not start with \"-\" — use \"./-name\" for filenames starting with a dash. Can be omitted when all or update is true.",
+            "items": {
+              "description": "File path (must not start with \"-\").",
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "update": {
+            "default": false,
+            "description": "Stage only modified and deleted files (skip untracked files).",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

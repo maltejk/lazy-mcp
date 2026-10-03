@@ -1,0 +1,63 @@
+{
+  "tools": {
+    "get_project_events": {
+      "description": "List events for a project (before/after: YYYY-MM-DD). Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_project_events",
+      "server": "gitlab_arc",
+      "inputSchema": {
+        "properties": {
+          "action": {
+            "description": "If defined, returns events with the specified action type",
+            "type": "string"
+          },
+          "after": {
+            "description": "If defined, Returns events created after the specified date (YYYY-MM-DD format). To include events on 2025-08-29, use after=2025-08-28",
+            "type": "string"
+          },
+          "before": {
+            "description": "If defined, Returns events created before the specified date (YYYY-MM-DD format). To include events on 2025-08-29, use before=2025-08-30",
+            "type": "string"
+          },
+          "page": {
+            "description": "Returns the specified results page. Default: 1",
+            "type": "number"
+          },
+          "per_page": {
+            "description": "Number of results per page. Default: 20",
+            "type": "number"
+          },
+          "project_id": {
+            "description": "Project ID or URL-encoded path",
+            "type": "string"
+          },
+          "sort": {
+            "description": "Direction to sort the results by creation date. Default: desc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
+          "target_type": {
+            "description": "If defined, returns events with the specified target type",
+            "enum": [
+              "epic",
+              "issue",
+              "merge_request",
+              "milestone",
+              "note",
+              "project",
+              "snippet",
+              "user"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

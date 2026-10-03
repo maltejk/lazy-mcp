@@ -1,0 +1,21 @@
+{
+  "tools": {
+    "get_namespace": {
+      "description": "Get details of a namespace (user or group) by ID or path. Groups are namespaces with kind='group'. Use this for a known resource or result; choose the corresponding list or search tool when you need to discover multiple resources. It is read-only and does not mutate GitLab data; missing resources, invalid identifiers, insufficient permission, and rate limits are returned as errors. When `project_id` or `group_id` is accepted, provide the numeric ID or complete URL-encoded path described by the schema; use required identifiers and pagination fields exactly as documented.",
+      "maps_to": "get_namespace",
+      "server": "gitlab_dev",
+      "inputSchema": {
+        "properties": {
+          "namespace_id": {
+            "description": "Namespace ID or full path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}
