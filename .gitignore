@@ -152,3 +152,6 @@ end_to_end_example/
 /.zcode/skills
 skills-lock.json
 /code_review
+
+# Local build of the router binary
+/lazy-mcp
